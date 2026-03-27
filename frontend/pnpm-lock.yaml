@@ -5,6 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
+<<<<<<< HEAD
   picomatch: ^2.3.1 || ^3.0.0 || ^4.0.0
   brace-expansion: ^1.1.11 || ^2.0.1
   yaml: '>=2.4.3'
@@ -12,6 +13,15 @@ overrides:
   h3: '>=1.12.0'
   smol-toml: '>=1.3.1'
   '@eslint/plugin-kit': '>=0.2.4'
+=======
+  picomatch: latest
+  brace-expansion: latest
+  yaml: latest
+  dompurify: latest
+  h3: latest
+  smol-toml: latest
+  '@eslint/plugin-kit': latest
+>>>>>>> 867f660 (feat: Initialize frontend and website projects, add a comprehensive security scanning workflow, and introduce an AI chatbot component.)
 
 importers:
 
@@ -42,8 +52,13 @@ importers:
         specifier: 4.1.0
         version: 4.1.0
       dompurify:
+<<<<<<< HEAD
         specifier: '>=3.1.3'
         version: 3.4.0
+=======
+        specifier: latest
+        version: 3.3.3
+>>>>>>> 867f660 (feat: Initialize frontend and website projects, add a comprehensive security scanning workflow, and introduce an AI chatbot component.)
       framer-motion:
         specifier: ^12.38.0
         version: 12.38.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -214,6 +229,7 @@ packages:
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   '@eslint/core@1.2.0':
     resolution: {integrity: sha512-8FTGbNzTvmSlc4cZBaShkC6YvFMG0riksYWRFKXztqVdXaQbcZLXlFbSpC05s70sGEsXAw0qwhx69JiW7hQS7A==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
@@ -222,6 +238,11 @@ packages:
     resolution: {integrity: sha512-yfkgDw1KR66rkT5A8ci4irzDysN7FRpq3ttJolR88OqQikAWqwA8j5VZyas+vjyBNFIJ7MfybJ9plMILI2UrCw==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 >>>>>>> a9c831d (feat: Introduce initial frontend application with AI chatbot and backend terminal access, rate limiting, and security middleware.)
+=======
+  '@eslint/core@1.1.1':
+    resolution: {integrity: sha512-QUPblTtE51/7/Zhfv8BDwO0qkkzQL7P/aWWbqcf4xWLEYn1oKjdO0gglQBB4GAsu7u6wjijbCmzsUTy6mnk6oQ==}
+    engines: {node: ^20.19.0 || ^22.13.0 || >=24}
+>>>>>>> 867f660 (feat: Initialize frontend and website projects, add a comprehensive security scanning workflow, and introduce an AI chatbot component.)
 
   '@eslint/eslintrc@3.3.5':
     resolution: {integrity: sha512-4IlJx0X0qftVsN5E+/vGujTRIFtwuLbNsVUe7TO6zYPDR1O6nFwvwhIKEKSrl6dZchmYBITazxKoUYOjdtjlRg==}
@@ -236,6 +257,7 @@ packages:
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   '@eslint/plugin-kit@0.7.0':
     resolution: {integrity: sha512-ejvBr8MQCbVsWNZnCwDXjUKq40MDmHalq7cJ6e9s/qzTUFIIo/afzt1Vui9T97FM/V/pN4YsFVoed5NIa96RDg==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
@@ -244,6 +266,11 @@ packages:
     resolution: {integrity: sha512-ZAoA40rNMPwSm+AeHpCq8STiNAwzWLJuP8Xv4CHIc9wv/PSuExjMrmjfYNj682vW0OOiZ1HKxzvjQr9XZIisQA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 >>>>>>> a9c831d (feat: Introduce initial frontend application with AI chatbot and backend terminal access, rate limiting, and security middleware.)
+=======
+  '@eslint/plugin-kit@0.6.1':
+    resolution: {integrity: sha512-iH1B076HoAshH1mLpHMgwdGeTs0CYwL0SPMkGuSebZrwBp16v415e9NZXg2jtrqPVQjf6IANe2Vtlr5KswtcZQ==}
+    engines: {node: ^20.19.0 || ^22.13.0 || >=24}
+>>>>>>> 867f660 (feat: Initialize frontend and website projects, add a comprehensive security scanning workflow, and introduce an AI chatbot component.)
 
   '@humanfs/core@0.19.1':
     resolution: {integrity: sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA==}
@@ -876,6 +903,7 @@ packages:
     resolution: {integrity: sha512-qIj0G9wZbMGNLjLmg1PT6v2mE9AH2zlnADJD/2tC6E00hgmhUOfEB6greHPAfLRSufHqROIUTkw6E+M3lH0PTQ==}
     engines: {node: '>= 0.4'}
 
+<<<<<<< HEAD
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
 
@@ -886,6 +914,20 @@ packages:
 
   brace-expansion@2.0.3:
     resolution: {integrity: sha512-MCV/fYJEbqx68aE58kv2cA/kiky1G8vux3OR6/jbS+jIMe/6fJWa0DTzJU7dqijOWYwHi1t29FlfYI9uytqlpA==}
+=======
+  balanced-match@4.0.4:
+    resolution: {integrity: sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA==}
+    engines: {node: 18 || 20 || >=22}
+
+  baseline-browser-mapping@2.10.11:
+    resolution: {integrity: sha512-DAKrHphkJyiGuau/cFieRYhcTFeK/lBuD++C7cZ6KZHbMhBrisoi+EvhQ5RZrIfV5qwsW8kgQ07JIC+MDJRAhg==}
+    engines: {node: '>=6.0.0'}
+    hasBin: true
+
+  brace-expansion@5.0.5:
+    resolution: {integrity: sha512-VZznLgtwhn+Mact9tfiwx64fA9erHH/MCXEUfB/0bX/6Fz6ny5EGTXYltMocqg4xFAQZtnO3DHWWXi8RiuN7cQ==}
+    engines: {node: 18 || 20 || >=22}
+>>>>>>> 867f660 (feat: Initialize frontend and website projects, add a comprehensive security scanning workflow, and introduce an AI chatbot component.)
 
   braces@3.0.3:
     resolution: {integrity: sha512-yQbXgO/OSZVD2IsiLlro+7Hf6Q18EJrKSEsdoMzKePKXct3gvD8oLcOQdIzGupr5Fj+EDe8gO/lxc1BzfMpxvA==}
@@ -1008,8 +1050,13 @@ packages:
     resolution: {integrity: sha512-35mSku4ZXK0vfCuHEDAwt55dg2jNajHZ1odvF+8SSr82EsZY4QmXfuWso8oEd8zRhVObSN18aM0CjSdoBX7zIw==}
     engines: {node: '>=0.10.0'}
 
+<<<<<<< HEAD
   dompurify@3.4.0:
     resolution: {integrity: sha512-nolgK9JcaUXMSmW+j1yaSvaEaoXYHwWyGJlkoCTghc97KgGDDSnpoU/PlEnw63Ah+TGKFOyY+X5LnxaWbCSfXg==}
+=======
+  dompurify@3.3.3:
+    resolution: {integrity: sha512-Oj6pzI2+RqBfFG+qOaOLbFXLQ90ARpcGG6UePL82bJLtdsa6CYJD7nmiU8MW9nQNOtCHV3lZ/Bzq1X0QYbBZCA==}
+>>>>>>> 867f660 (feat: Initialize frontend and website projects, add a comprehensive security scanning workflow, and introduce an AI chatbot component.)
 
   dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
@@ -2296,10 +2343,14 @@ snapshots:
       '@types/json-schema': 7.0.15
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   '@eslint/core@1.2.0':
 =======
   '@eslint/core@0.13.0':
 >>>>>>> a9c831d (feat: Introduce initial frontend application with AI chatbot and backend terminal access, rate limiting, and security middleware.)
+=======
+  '@eslint/core@1.1.1':
+>>>>>>> 867f660 (feat: Initialize frontend and website projects, add a comprehensive security scanning workflow, and introduce an AI chatbot component.)
     dependencies:
       '@types/json-schema': 7.0.15
 
@@ -2322,6 +2373,7 @@ snapshots:
   '@eslint/object-schema@2.1.7': {}
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   '@eslint/plugin-kit@0.7.0':
     dependencies:
       '@eslint/core': 1.2.0
@@ -2330,6 +2382,11 @@ snapshots:
     dependencies:
       '@eslint/core': 0.13.0
 >>>>>>> a9c831d (feat: Introduce initial frontend application with AI chatbot and backend terminal access, rate limiting, and security middleware.)
+=======
+  '@eslint/plugin-kit@0.6.1':
+    dependencies:
+      '@eslint/core': 1.1.1
+>>>>>>> 867f660 (feat: Initialize frontend and website projects, add a comprehensive security scanning workflow, and introduce an AI chatbot component.)
       levn: 0.4.1
 
   '@humanfs/core@0.19.1': {}
@@ -2904,6 +2961,7 @@ snapshots:
 
   axobject-query@4.1.0: {}
 
+<<<<<<< HEAD
   balanced-match@1.0.2: {}
 
   baseline-browser-mapping@2.10.19: {}
@@ -2911,6 +2969,15 @@ snapshots:
   brace-expansion@2.0.3:
     dependencies:
       balanced-match: 1.0.2
+=======
+  balanced-match@4.0.4: {}
+
+  baseline-browser-mapping@2.10.11: {}
+
+  brace-expansion@5.0.5:
+    dependencies:
+      balanced-match: 4.0.4
+>>>>>>> 867f660 (feat: Initialize frontend and website projects, add a comprehensive security scanning workflow, and introduce an AI chatbot component.)
 
   braces@3.0.3:
     dependencies:
@@ -3028,7 +3095,11 @@ snapshots:
     dependencies:
       esutils: 2.0.3
 
+<<<<<<< HEAD
   dompurify@3.4.0:
+=======
+  dompurify@3.3.3:
+>>>>>>> 867f660 (feat: Initialize frontend and website projects, add a comprehensive security scanning workflow, and introduce an AI chatbot component.)
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
@@ -3308,10 +3379,14 @@ snapshots:
       '@eslint/eslintrc': 3.3.5
       '@eslint/js': 9.21.0
 <<<<<<< HEAD
+<<<<<<< HEAD
       '@eslint/plugin-kit': 0.7.0
 =======
       '@eslint/plugin-kit': 0.2.8
 >>>>>>> a9c831d (feat: Introduce initial frontend application with AI chatbot and backend terminal access, rate limiting, and security middleware.)
+=======
+      '@eslint/plugin-kit': 0.6.1
+>>>>>>> 867f660 (feat: Initialize frontend and website projects, add a comprehensive security scanning workflow, and introduce an AI chatbot component.)
       '@humanfs/node': 0.16.7
       '@humanwhocodes/module-importer': 1.0.1
       '@humanwhocodes/retry': 0.4.3
@@ -3807,13 +3882,21 @@ snapshots:
 
   minimatch@3.1.5:
     dependencies:
+<<<<<<< HEAD
       brace-expansion: 2.0.3
+=======
+      brace-expansion: 5.0.5
+>>>>>>> 867f660 (feat: Initialize frontend and website projects, add a comprehensive security scanning workflow, and introduce an AI chatbot component.)
 
   minimist@1.2.8: {}
 
   monaco-editor@0.55.1:
     dependencies:
+<<<<<<< HEAD
       dompurify: 3.4.0
+=======
+      dompurify: 3.3.3
+>>>>>>> 867f660 (feat: Initialize frontend and website projects, add a comprehensive security scanning workflow, and introduce an AI chatbot component.)
       marked: 14.0.0
 
   motion-dom@12.38.0:
