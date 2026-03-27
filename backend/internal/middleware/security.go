@@ -19,10 +19,14 @@ func SecureHeaders() gin.HandlerFunc {
 		// Referrer Policy
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 =======
 		
 >>>>>>> a9c831d (feat: Introduce initial frontend application with AI chatbot and backend terminal access, rate limiting, and security middleware.)
+=======
+
+>>>>>>> caaf02b (feat: implement security middleware for HTTP headers and panic recovery.)
 		c.Next()
 	}
 }
