@@ -6,6 +6,9 @@ settings:
 
 overrides:
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 3f1121a (feat: Initialize frontend dashboard and website projects with their respective package configurations.)
   picomatch: ^2.3.1 || ^3.0.0 || ^4.0.0
   brace-expansion: ^1.1.11 || ^2.0.1
   yaml: '>=2.4.3'
@@ -13,6 +16,7 @@ overrides:
   h3: '>=1.12.0'
   smol-toml: '>=1.3.1'
   '@eslint/plugin-kit': '>=0.2.4'
+<<<<<<< HEAD
 =======
   picomatch: latest
   brace-expansion: latest
@@ -22,6 +26,8 @@ overrides:
   smol-toml: latest
   '@eslint/plugin-kit': latest
 >>>>>>> 867f660 (feat: Initialize frontend and website projects, add a comprehensive security scanning workflow, and introduce an AI chatbot component.)
+=======
+>>>>>>> 3f1121a (feat: Initialize frontend dashboard and website projects with their respective package configurations.)
 
 importers:
 
@@ -53,10 +59,14 @@ importers:
         version: 4.1.0
       dompurify:
 <<<<<<< HEAD
+<<<<<<< HEAD
         specifier: '>=3.1.3'
         version: 3.4.0
 =======
         specifier: latest
+=======
+        specifier: '>=3.1.3'
+>>>>>>> 3f1121a (feat: Initialize frontend dashboard and website projects with their respective package configurations.)
         version: 3.3.3
 >>>>>>> 867f660 (feat: Initialize frontend and website projects, add a comprehensive security scanning workflow, and introduce an AI chatbot component.)
       framer-motion:
@@ -109,7 +119,7 @@ importers:
         specifier: 10.4.27
         version: 10.4.27(postcss@8.5.8)
       eslint:
-        specifier: '9'
+        specifier: 9.21.0
         version: 9.21.0(jiti@2.6.1)
       eslint-config-next:
         specifier: 16.2.1
@@ -122,10 +132,14 @@ importers:
         version: 4.2.2
       typescript:
 <<<<<<< HEAD
+<<<<<<< HEAD
         specifier: 5.7.3
 =======
         specifier: '5'
 >>>>>>> a9c831d (feat: Introduce initial frontend application with AI chatbot and backend terminal access, rate limiting, and security middleware.)
+=======
+        specifier: 5.7.3
+>>>>>>> 3f1121a (feat: Initialize frontend dashboard and website projects with their respective package configurations.)
         version: 5.7.3
 
 packages:
@@ -904,6 +918,7 @@ packages:
     engines: {node: '>= 0.4'}
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
 
@@ -918,16 +933,25 @@ packages:
   balanced-match@4.0.4:
     resolution: {integrity: sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA==}
     engines: {node: 18 || 20 || >=22}
+=======
+  balanced-match@1.0.2:
+    resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
+>>>>>>> 3f1121a (feat: Initialize frontend dashboard and website projects with their respective package configurations.)
 
   baseline-browser-mapping@2.10.11:
     resolution: {integrity: sha512-DAKrHphkJyiGuau/cFieRYhcTFeK/lBuD++C7cZ6KZHbMhBrisoi+EvhQ5RZrIfV5qwsW8kgQ07JIC+MDJRAhg==}
     engines: {node: '>=6.0.0'}
     hasBin: true
 
+<<<<<<< HEAD
   brace-expansion@5.0.5:
     resolution: {integrity: sha512-VZznLgtwhn+Mact9tfiwx64fA9erHH/MCXEUfB/0bX/6Fz6ny5EGTXYltMocqg4xFAQZtnO3DHWWXi8RiuN7cQ==}
     engines: {node: 18 || 20 || >=22}
 >>>>>>> 867f660 (feat: Initialize frontend and website projects, add a comprehensive security scanning workflow, and introduce an AI chatbot component.)
+=======
+  brace-expansion@2.0.2:
+    resolution: {integrity: sha512-Jt0vHyM+jmUBqojB7E1NIYadt0vI0Qxjxd2TErW94wDz+E2LAm5vKMXXwg6ZZBTHPuUlDgQHKXvjGBdfcF1ZDQ==}
+>>>>>>> 3f1121a (feat: Initialize frontend dashboard and website projects with their respective package configurations.)
 
   braces@3.0.3:
     resolution: {integrity: sha512-yQbXgO/OSZVD2IsiLlro+7Hf6Q18EJrKSEsdoMzKePKXct3gvD8oLcOQdIzGupr5Fj+EDe8gO/lxc1BzfMpxvA==}
@@ -2962,6 +2986,7 @@ snapshots:
   axobject-query@4.1.0: {}
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   balanced-match@1.0.2: {}
 
   baseline-browser-mapping@2.10.19: {}
@@ -2971,13 +2996,20 @@ snapshots:
       balanced-match: 1.0.2
 =======
   balanced-match@4.0.4: {}
+=======
+  balanced-match@1.0.2: {}
+>>>>>>> 3f1121a (feat: Initialize frontend dashboard and website projects with their respective package configurations.)
 
   baseline-browser-mapping@2.10.11: {}
 
-  brace-expansion@5.0.5:
+  brace-expansion@2.0.2:
     dependencies:
+<<<<<<< HEAD
       balanced-match: 4.0.4
 >>>>>>> 867f660 (feat: Initialize frontend and website projects, add a comprehensive security scanning workflow, and introduce an AI chatbot component.)
+=======
+      balanced-match: 1.0.2
+>>>>>>> 3f1121a (feat: Initialize frontend dashboard and website projects with their respective package configurations.)
 
   braces@3.0.3:
     dependencies:
@@ -3878,6 +3910,7 @@ snapshots:
 
   minimatch@10.2.4:
     dependencies:
+<<<<<<< HEAD
       brace-expansion: 2.0.3
 
   minimatch@3.1.5:
@@ -3887,6 +3920,13 @@ snapshots:
 =======
       brace-expansion: 5.0.5
 >>>>>>> 867f660 (feat: Initialize frontend and website projects, add a comprehensive security scanning workflow, and introduce an AI chatbot component.)
+=======
+      brace-expansion: 2.0.2
+
+  minimatch@3.1.5:
+    dependencies:
+      brace-expansion: 2.0.2
+>>>>>>> 3f1121a (feat: Initialize frontend dashboard and website projects with their respective package configurations.)
 
   minimist@1.2.8: {}
 
