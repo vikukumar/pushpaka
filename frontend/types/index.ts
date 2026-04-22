@@ -3,8 +3,28 @@ export interface User {
   email: string
   name: string
   role: string
+  is_active: boolean
+  avatar_url: string
+  oauth_provider: string
   created_at: string
+  updated_at: string
 }
+
+// SafeUser matches the backend SafeUser struct (no password hash, has extra fields)
+export type SafeUser = User
+
+export interface UpdateUserRoleRequest {
+  role: 'admin' | 'user' | 'viewer'
+  is_active?: boolean
+}
+
+export interface UsersListResponse {
+  data: SafeUser[]
+  total: number
+  limit: number
+  offset: number
+}
+
 
 export interface Project {
   id: string
@@ -151,6 +171,14 @@ export interface SystemInfo {
     os: string
     arch: string
     in_container: boolean
+  }
+  load: {
+    cpu_percent: number
+    ram_total: number
+    ram_used: number
+    ram_percent: number
+    hostname: string
+    ip: string
   }
 }
 

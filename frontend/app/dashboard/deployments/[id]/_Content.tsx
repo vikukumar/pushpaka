@@ -499,8 +499,7 @@ export default function DeploymentDetailPage() {
 
         {/* Logs */}
         <LogViewer
-          logs={logs}
-          isStreaming={isLive}
+          live={isLive}
           deploymentId={id}
         />
       </div>

@@ -165,6 +165,13 @@ func RunWithOptions(ctx context.Context, opts RunOptions) error {
 		aiWorkers = append(aiWorkers, services.NewAIWorker(i, commitRepo, projectRepo, aiSvc, &log.Logger))
 	}
 
+	kvRepo, err := repositories.NewKVRepository(cfg.KVStorePath)
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to initialize fast KV store (BadgerDB), syncing may be slower")
+	} else {
+		defer kvRepo.Close()
+	}
+
 	reg := &router.ServiceRegistry{
 		AuthSvc:        authSvc,
 		ProjectSvc:     projectSvc,
@@ -195,6 +202,7 @@ func RunWithOptions(ctx context.Context, opts RunOptions) error {
 		EditorRepo:     editorRepo,
 		CommitRepo:     commitRepo,
 		TaskRepo:       taskRepo,
+		KVRepo:         kvRepo,
 	}
 
 	// Background Tasks
@@ -219,6 +227,12 @@ func RunWithOptions(ctx context.Context, opts RunOptions) error {
 				log.Error().Err(err).Int("id", aw.WorkerID).Msg("failed to start internal AI worker")
 			}
 		}
+
+		// Recover and re-queue any tasks that were running or pending before restart
+		go func() {
+			time.Sleep(2 * time.Second) // Give workers a moment to initialize
+			taskDispatcher.RecoverStuckTasks(ctx)
+		}()
 	}
 
 	// AI Monitoring Service

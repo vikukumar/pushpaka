@@ -66,14 +66,21 @@ export default function DashboardPage() {
     refetchInterval: 5000, // Live updates every 5s
   })
 
+  const { data: statsData } = useQuery({
+    queryKey: ['deployments-stats'],
+    queryFn: () => deploymentsApi.stats().then((r) => r.data),
+    refetchInterval: 5000,
+  })
+
   const projects: Project[]    = projectsData?.data    || []
   const deployments: Deployment[] = deploymentsData?.data || []
+  const depStats = statsData || {}
 
   const stats = {
     totalProjects:       projects.length,
-    activeDeployments:   deployments.filter((d) => d.status === 'running').length,
-    buildingDeployments: deployments.filter((d) => d.status === 'building').length,
-    failedDeployments:   deployments.filter((d) => d.status === 'failed').length,
+    activeDeployments:   depStats['running'] || 0,
+    buildingDeployments: depStats['building'] || 0,
+    failedDeployments:   depStats['failed'] || 0,
   }
 
   return (

@@ -44,7 +44,9 @@ type Config struct {
 	// Set via DEPLOYS_DIR.
 	DeploysDir string
 	TestsDir   string
-	LogLevel   string
+	// KVStorePath is the directory for the fast key-value store (BadgerDB).
+	KVStorePath string
+	LogLevel    string
 
 	// Worker counts
 	BuildWorkers  int
@@ -64,6 +66,9 @@ type Config struct {
 	// AIRateLimitPerUserPerDay caps daily AI calls per user when they are using the
 	// global platform key (not their own). 0 = unlimited.
 	AIRateLimitPerUserPerDay int
+
+	// RBAC
+	FirstAdminEmail string // Auto-promote this user to admin on registration/startup
 
 	// Default notification channels (can be overridden per-user in DB)
 	SMTPHost     string
@@ -128,6 +133,7 @@ func Load() *Config {
 		BuildsDir:          getEnv("BUILDS_DIR", defaultBuildsDir()),
 		DeploysDir:         getEnv("DEPLOYS_DIR", deployDir),
 		TestsDir:           getEnv("TESTS_DIR", filepath.Join(defaultPushpakaBase(), "tests")),
+		KVStorePath:        getEnv("KV_STORE_PATH", filepath.Join(defaultPushpakaBase(), "kv")),
 		LogLevel:           getEnv("LOG_LEVEL", "info"),
 		BuildWorkers: func() int {
 			v, _ := strconv.Atoi(getEnv("BUILD_WORKERS", "3"))
@@ -165,17 +171,18 @@ func Load() *Config {
 			v, _ := strconv.Atoi(getEnv("AI_RATE_LIMIT_PER_USER_PER_DAY", "0"))
 			return v
 		}(),
-		SMTPHost:     getEnv("SMTP_HOST", ""),
-		SMTPPort:     smtpPort,
-		SMTPUsername: getEnv("SMTP_USERNAME", ""),
-		SMTPPassword: getEnv("SMTP_PASSWORD", ""),
-		SMTPFrom:     getEnv("SMTP_FROM", ""),
+		FirstAdminEmail: getEnv("FIRST_ADMIN_EMAIL", ""),
+		SMTPHost:        getEnv("SMTP_HOST", ""),
+		SMTPPort:        smtpPort,
+		SMTPUsername:    getEnv("SMTP_USERNAME", ""),
+		SMTPPassword:    getEnv("SMTP_PASSWORD", ""),
+		SMTPFrom:        getEnv("SMTP_FROM", ""),
 	}
 }
 
 // EnsureDirs creates CloneDir and DeployDir if they do not already exist.
 func (c *Config) EnsureDirs() error {
-	dirs := []string{c.CloneDir, c.ProjectsDir, c.BuildsDir, c.DeploysDir, c.TestsDir}
+	dirs := []string{c.CloneDir, c.ProjectsDir, c.BuildsDir, c.DeploysDir, c.TestsDir, c.KVStorePath}
 	for _, dir := range dirs {
 		if dir == "" {
 			continue

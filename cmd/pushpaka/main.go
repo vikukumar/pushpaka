@@ -105,8 +105,9 @@ func main() {
 		}
 		defer sqlDB.Close()
 
+		log.Info().Bool("dev", *dev).Msg("all-in-one mode: internal workers will run in-process")
+
 		q := queue.New(100)
-		log.Info().Bool("dev", *dev).Msg("all-in-one mode: in-process queue active, embedded workers starting")
 
 		wg.Add(1)
 		go func() {
@@ -121,8 +122,8 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := workerApp.RunInProcessWithDB(ctx, q, q, sharedDB); err != nil {
-				log.Error().Err(err).Msg("embedded worker error")
+			if err := workerApp.RunInProcessWithDB(ctx, q, nil, sharedDB); err != nil {
+				log.Error().Err(err).Msg("Internal workers error")
 				cancel()
 			}
 		}()
@@ -141,12 +142,21 @@ func main() {
 
 	case "worker":
 		// Worker only — reads jobs from Redis, pairs with PUSHPAKA_COMPONENT=api.
-		log.Info().Msg("worker-only mode: connecting to Redis queue")
+		modeOpt := os.Getenv("MODE")
+		if modeOpt == "" {
+			modeOpt = "hybrid" // default for standalone worker
+		}
+		roleOpt := os.Getenv("WORKER_ROLE")
+		serverURL := os.Getenv("SERVER_URL")
+
+		log.Info().Str("mode", modeOpt).Str("role", roleOpt).Msg("worker-only mode starting")
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			opts := workerApp.RunOptions{
-				Mode: "hybrid",
+				Mode:      modeOpt,
+				ServerURL: serverURL,
+				Role:      roleOpt,
 			}
 			if err := workerApp.Run(ctx, opts); err != nil {
 				log.Error().Err(err).Msg("worker error")

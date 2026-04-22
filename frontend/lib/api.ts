@@ -104,6 +104,7 @@ export const deploymentsApi = {
     if (projectId) params.set('project_id', projectId)
     return apiClient.get(`/deployments?${params}`)
   },
+  stats: () => apiClient.get('/deployments/stats'),
   get: (id: string) => apiClient.get(`/deployments/${id}`),
   trigger: (data: { project_id: string; branch?: string; commit_sha?: string }) =>
     apiClient.post('/deployments', data),

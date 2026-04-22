@@ -59,6 +59,7 @@ type ServiceRegistry struct {
 	SystemRepo     *repositories.SystemConfigRepository
 	EditorRepo     *repositories.EditorStateRepository
 	TaskRepo       *repositories.TaskRepository
+	KVRepo         *repositories.KVRepository
 }
 
 // New builds the Gin engine. Pass a non-nil uiFS to serve the embedded
@@ -198,6 +199,7 @@ func New(
 			// Deployments
 			deployments := protected.Group("/deployments")
 			{
+				deployments.GET("/stats", deploymentHandler.Stats)
 				deployments.POST("", deploymentHandler.Deploy)
 				deployments.GET("", deploymentHandler.List)
 				deployments.GET("/:id", deploymentHandler.Get)
@@ -334,6 +336,17 @@ func New(
 			protected.GET("/projects/:id/editor/state", editorHandler.GetState)
 			protected.POST("/projects/:id/editor/state", editorHandler.SaveState)
 			protected.GET("/editor/ws", editorWSHandler.Connect)
+			// Current user profile (used by OAuth callback to fetch full user after token)
+			protected.GET("/auth/me", authHandler.Me)
+
+			// Admin routes (role=admin only)
+			admin := protected.Group("/admin")
+			admin.Use(middleware.RequireAdmin())
+			{
+				adminHandler := handlers.NewAdminHandler(authSvc, reg.UserRepo)
+				admin.GET("/users", adminHandler.ListUsers)
+				admin.PUT("/users/:id/role", adminHandler.UpdateUserRole)
+			}
 		}
 	}
 

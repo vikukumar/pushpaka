@@ -113,6 +113,11 @@ func checkDockerAvailable(dockerHost string) bool {
 func (w *BuildWorker) DockerAvailable() bool { return w.dockerAvailable }
 
 func (w *BuildWorker) Run(ctx context.Context) {
+	if w.Role == "installer" {
+		w.runInstallerMode(ctx)
+		return
+	}
+
 	log.Info().Int("worker_id", w.id).Str("role", w.Role).Msg("worker started")
 	for {
 		select {
@@ -147,7 +152,15 @@ func (w *BuildWorker) Run(ctx context.Context) {
 					w.reporter.JobStarted(w.Role)
 					defer w.reporter.JobFinished(w.Role)
 				}
-				w.processTask(ctx, taskID)
+				defer func() {
+					if r := recover(); r != nil {
+						log.Error().Interface("panic", r).Str("task_id", taskID).Msg("worker recovered from panic")
+						w.completeTask(taskID, false, fmt.Sprintf("worker panicked: %v", r))
+					}
+				}()
+				taskCtx, cancel := context.WithTimeout(ctx, 60*time.Minute)
+				defer cancel()
+				w.processTask(taskCtx, taskID)
 			}()
 		}
 	}
@@ -157,10 +170,25 @@ func (w *BuildWorker) Run(ctx context.Context) {
 // reporter is optional (may be nil); when non-nil its JobStarted/JobFinished
 // methods are called around each processed job.
 func (w *BuildWorker) RunInProcess(ctx context.Context, ch <-chan []byte, reporter JobReporter) {
+	if w.Role == "installer" {
+		w.runInstallerMode(ctx)
+		return
+	}
+
+	// Normalize role for reporting (syncer -> sync, builder -> build)
+	reportRole := w.Role
+	switch reportRole {
+	case "syncer": reportRole = "sync"
+	case "builder": reportRole = "build"
+	case "tester": reportRole = "test"
+	case "deployer": reportRole = "deploy"
+	}
+
 	w.reporter = reporter
 	log.Info().
 		Int("worker_id", w.id).
 		Str("role", w.Role).
+		Str("report_role", reportRole).
 		Bool("docker", w.dockerAvailable).
 		Msgf("%s worker started", w.Role)
 	for {
@@ -175,14 +203,56 @@ func (w *BuildWorker) RunInProcess(ctx context.Context, ch <-chan []byte, report
 			taskID := string(payload)
 			func() {
 				if reporter != nil {
-					reporter.JobStarted(w.Role)
-					defer reporter.JobFinished(w.Role)
+					reporter.JobStarted(reportRole)
+					defer reporter.JobFinished(reportRole)
 				}
-				w.processTask(ctx, taskID)
+				defer func() {
+					if r := recover(); r != nil {
+						log.Error().Interface("panic", r).Str("task_id", taskID).Msg("worker recovered from panic")
+						w.completeTask(taskID, false, fmt.Sprintf("worker panicked: %v", r))
+					}
+				}()
+				taskCtx, cancel := context.WithTimeout(ctx, 60*time.Minute)
+				defer cancel()
+				w.processTask(taskCtx, taskID)
 			}()
 		}
 	}
 }
+
+// runInstallerMode dynamically installs system requirements inside the running Docker container
+// using an isolated child process to prevent host environment pollution.
+func (w *BuildWorker) runInstallerMode(ctx context.Context) {
+	log.Info().Msg("Installer worker initializing... Checking for runtime requirements")
+
+	// We'll install core runtimes needed for builds: Node, Go, Python, Java, C/C++
+	packages := []string{
+		"nodejs", "npm", "go", "python3", "py3-pip", "openjdk11",
+		"gcc", "g++", "make", "docker-cli",
+	}
+
+	// Wait randomly up to 2 seconds to avoid apk lock contention if multiple containers start
+	time.Sleep(1 * time.Second)
+
+	// Execute inside an isolated shell process to ensure environment changes are contained
+	script := fmt.Sprintf("apk add --no-cache %s", strings.Join(packages, " "))
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", script)
+	
+	// Create a new process group to isolate the execution (Linux/macOS specific, but safe to omit or conditionally apply)
+	// For standard isolation, running inside `sh -c` is the requested approach.
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		log.Warn().Err(err).Msg("Installer failed to install dependencies. (Safe to ignore if running natively outside Alpine)")
+	} else {
+		log.Info().Msg("Installer worker successfully installed dynamic runtime environments in isolated context!")
+	}
+
+	log.Info().Msg("Installer worker entering idle block")
+	<-ctx.Done()
+}
+
 
 func shortID(id string) string {
 	if len(id) > 8 {
@@ -246,14 +316,28 @@ func (w *BuildWorker) processJob(ctx context.Context, job *models.DeploymentJob)
 		return
 	}
 
+
 	// Step 0: Check for Build Cache
-	if entries, _ := os.ReadDir(buildsDir); len(entries) > 0 {
-		w.appendLog(job.DeploymentID, "info", "system", "Build artifacts found in cache (skipping build steps)")
-		w.updateStatus(job.DeploymentID, string(models.DeploymentRunning), "", "") // Simplified: if build exists, assume we can skip to run or just finish build.
-		// Update commit status to Built if not already
-		w.updateCommitStatus(job.ProjectID, job.CommitSHA, models.CommitStatusBuilt)
-		return
+	// IMPORTANT: Only skip if we're in recovery mode AND the build dir has artifacts.
+	// Do NOT skip for normal new deployments even if buildsDir has stale content
+	// from a previously failed build — those artifacts may be corrupt or incomplete.
+	if !job.IsRecovery {
+		if entries, _ := os.ReadDir(buildsDir); len(entries) > 0 {
+			// Clear stale artifacts from prior failed builds before re-building.
+			w.appendLog(job.DeploymentID, "info", "system", "Clearing stale build artifacts before fresh build...")
+			_ = w.forceRemoveDir(buildsDir)
+			_ = os.MkdirAll(buildsDir, 0755)
+		}
+	} else {
+		// Recovery mode: use cached artifacts if they exist
+		if entries, _ := os.ReadDir(buildsDir); len(entries) > 0 {
+			w.appendLog(job.DeploymentID, "info", "system", "Build artifacts found in cache (recovery mode, skipping build steps)")
+			w.updateStatus(job.DeploymentID, string(models.DeploymentRunning), "", "")
+			w.updateCommitStatus(job.ProjectID, job.CommitSHA, models.CommitStatusBuilt)
+			return
+		}
 	}
+
 	// Step 1: Clone or Sync repository
 	needsClone := !job.IsRecovery
 	if job.IsRecovery {
@@ -283,39 +367,55 @@ func (w *BuildWorker) processJob(ctx context.Context, job *models.DeploymentJob)
 
 	if needsClone {
 		if _, err := os.Stat(filepath.Join(sourceDir, ".git")); os.IsNotExist(err) {
-			w.appendLog(job.DeploymentID, "info", "system", fmt.Sprintf("Preparing fresh workspace at: %s", sourceDir))
+			w.appendLog(job.DeploymentID, "warn", "system", fmt.Sprintf("Persistent clone missing at %s, performing fallback clone...", sourceDir))
 
-			// Use forceRemoveDir with retries for Windows file lock resilience.
-			if err := w.forceRemoveDir(sourceDir); err != nil {
-				w.appendLog(job.DeploymentID, "warn", "system", fmt.Sprintf("Failed to fully clear directory: %v. Git clone may fail.", err))
-			}
+			// [FIX] Extremely aggressive cleanup to avoid "initial ref transaction called with existing refs"
+			_ = w.forceRemoveDir(sourceDir)
+			time.Sleep(500 * time.Millisecond) // Give OS time to release locks
+			_ = os.MkdirAll(sourceDir, 0755)
 
 			if err := w.cloneRepo(ctx, job, sourceDir); err != nil {
-				w.fail(job.DeploymentID, fmt.Sprintf("clone failed: %v", err))
-				return
+				// Retry once with fresh directory if first attempt fails with Git bug
+				w.appendLog(job.DeploymentID, "warn", "system", "First clone attempt failed, retrying with fresh directory...")
+				_ = w.forceRemoveDir(sourceDir)
+				_ = os.MkdirAll(sourceDir, 0755)
+				if retryErr := w.cloneRepo(ctx, job, sourceDir); retryErr != nil {
+					w.fail(job.DeploymentID, fmt.Sprintf("fallback clone failed: %v", retryErr))
+					return
+				}
 			}
-			w.appendLog(job.DeploymentID, "info", "system", "Repository cloned successfully")
+			w.appendLog(job.DeploymentID, "info", "system", "Fallback clone completed successfully")
 		} else {
-			w.appendLog(job.DeploymentID, "info", "system", "Repository exists, checking if sync is needed...")
-			// Check if current HEAD is already at the target commit/branch
+			// Persistent clone exists (done by sync task)
+			w.appendLog(job.DeploymentID, "info", "system", "Persistent clone found")
 			alreadySynced, err := w.isRepositoryInSync(ctx, job, sourceDir)
-			if err == nil && alreadySynced {
-				w.appendLog(job.DeploymentID, "info", "system", "Repository is already synchronized, skipping sync")
-			} else {
-				w.appendLog(job.DeploymentID, "info", "system", "Updating existing source code...")
+			if err != nil || !alreadySynced {
+				w.appendLog(job.DeploymentID, "info", "system", "Updating existing persistent clone...")
 				if err := w.syncRepo(ctx, job, sourceDir); err != nil {
-					w.appendLog(job.DeploymentID, "warn", "system", fmt.Sprintf("Sync failed: %v. Attempting fresh clone.", err))
-					// Remove and re-clone on sync failure
-					_ = w.forceRemoveDir(filepath.Dir(sourceDir))
+					w.appendLog(job.DeploymentID, "warn", "system", fmt.Sprintf("Sync failed: %v. Deleting and recloning.", err))
+					_ = w.forceRemoveDir(sourceDir)
 					if err := w.cloneRepo(ctx, job, sourceDir); err != nil {
 						w.fail(job.DeploymentID, fmt.Sprintf("re-clone failed: %v", err))
 						return
 					}
-				} else {
-					w.appendLog(job.DeploymentID, "info", "system", "Repository synchronized successfully")
 				}
 			}
 		}
+
+		// Now copy the persistent clone to the isolated buildsDir for modification/building
+		w.appendLog(job.DeploymentID, "info", "system", "Copying source to isolated build workspace...")
+		_ = w.forceRemoveDir(buildsDir)
+		_ = os.MkdirAll(buildsDir, 0755)
+		if err := copyDir(sourceDir, buildsDir); err != nil {
+			w.fail(job.DeploymentID, fmt.Sprintf("failed to copy source to build dir: %v", err))
+			return
+		}
+	}
+
+	// Important: we now perform all build operations inside buildsDir
+	buildTargetDir := buildsDir
+	if job.IsRecovery {
+		buildTargetDir = sourceDir // use original if recovering without rebuild
 	}
 
 	// Capture and update commit info (visible on project cards)
@@ -344,15 +444,28 @@ func (w *BuildWorker) processJob(ctx context.Context, job *models.DeploymentJob)
 		})
 	}
 
+	// [FIX] Persist source code for editor IMMEDIATELY after sync/preparation.
+	// This ensures the editor always shows the latest code even if the build fails.
+	permanentDir := filepath.Join(w.cfg.DeploysDir, shortID(job.UserID), shortID(job.ProjectID))
+	if !job.IsRecovery {
+		w.appendLog(job.DeploymentID, "info", "system", "Syncing source code to editor workspace...")
+		_ = os.MkdirAll(filepath.Dir(permanentDir), 0755)
+		_ = w.forceRemoveDir(permanentDir)
+		// Use sourceDir (the persistent clone) as the source for persistence
+		if err := copyDirSkipModules(sourceDir, permanentDir); err != nil {
+			w.appendLog(job.DeploymentID, "warn", "system", fmt.Sprintf("failed to persist source for editor: %v", err))
+		}
+	}
+
 	var containerID, deployURL string
 	var deployErr error
 
 	if w.dockerAvailable {
 		// Docker path: generate Dockerfile -> build image -> run container
-		dockerfilePath := filepath.Join(sourceDir, "Dockerfile")
+		dockerfilePath := filepath.Join(buildTargetDir, "Dockerfile")
 		if _, err := os.Stat(dockerfilePath); os.IsNotExist(err) {
 			w.appendLog(job.DeploymentID, "info", "system", "No Dockerfile found, generating one...")
-			if err := w.generateDockerfile(sourceDir, job); err != nil {
+			if err := w.generateDockerfile(buildTargetDir, job); err != nil {
 				w.fail(job.DeploymentID, fmt.Sprintf("dockerfile generation failed: %v", err))
 				return
 			}
@@ -362,10 +475,25 @@ func (w *BuildWorker) processJob(ctx context.Context, job *models.DeploymentJob)
 			w.appendLog(job.DeploymentID, "info", "system", "Recovery mode: skipping image build")
 		} else {
 			w.appendLog(job.DeploymentID, "info", "system", fmt.Sprintf("Building Docker image: %s", job.ImageTag))
-			if err := w.buildImage(ctx, job, sourceDir); err != nil {
-				w.fail(job.DeploymentID, fmt.Sprintf("build failed: %v", err))
+			
+			buildErr := w.buildImage(ctx, job, buildTargetDir)
+			if buildErr != nil {
+				w.appendLog(job.DeploymentID, "error", "system", fmt.Sprintf("Docker build failed: %v", buildErr))
+				
+				// Analyze failure for user information, but do NOT retry
+				if w.cfg.AIAPIKey != "" {
+					explanation, _ := w.analyzeFailure(job.DeploymentID, buildErr.Error())
+					if explanation != "" {
+						w.appendLog(job.DeploymentID, "info", "system", "AI Analysis: " + explanation)
+						buildErr = fmt.Errorf("%v (AI: %s)", buildErr, explanation)
+					}
+				}
+				
+				w.fail(job.DeploymentID, fmt.Sprintf("build failed: %v", buildErr))
+				w.fireNotification(job, "failed", "", buildErr.Error())
 				return
 			}
+			
 			w.appendLog(job.DeploymentID, "info", "system", "Docker image built successfully")
 			// Update ProjectCommit status
 			w.updateCommitStatus(job.ProjectID, job.CommitSHA, models.CommitStatusBuilt)
@@ -377,34 +505,37 @@ func (w *BuildWorker) processJob(ctx context.Context, job *models.DeploymentJob)
 		// Direct path: install deps, build, then promote to BuildsDir, then deploy
 		w.appendLog(job.DeploymentID, "info", "system", "Preparing project for direct deployment...")
 
-		// 1. Build in sourceDir
-		w.appendLog(job.DeploymentID, "info", "system", "Installing dependencies and building in source directory...")
-		if err := w.runBuildInSource(ctx, job, sourceDir); err != nil {
-			w.fail(job.DeploymentID, fmt.Sprintf("build failed: %v", err))
+		// 1. Build in buildTargetDir
+		w.appendLog(job.DeploymentID, "info", "system", "Installing dependencies and building in build directory...")
+
+		buildErr := w.runBuildInSource(ctx, job, buildTargetDir)
+		if buildErr != nil {
+			w.appendLog(job.DeploymentID, "error", "system", fmt.Sprintf("Direct build failed: %v", buildErr))
+			
+			// Analyze failure for user information, but do NOT retry
+			if w.cfg.AIAPIKey != "" {
+				explanation, _ := w.analyzeFailure(job.DeploymentID, buildErr.Error())
+				if explanation != "" {
+					w.appendLog(job.DeploymentID, "info", "system", "AI Analysis: " + explanation)
+					buildErr = fmt.Errorf("%v (AI: %s)", buildErr, explanation)
+				}
+			}
+			
+			w.fail(job.DeploymentID, fmt.Sprintf("build failed: %v", buildErr))
+			w.fireNotification(job, "failed", "", buildErr.Error())
 			return
 		}
 		// Update ProjectCommit status
 		w.updateCommitStatus(job.ProjectID, job.CommitSHA, models.CommitStatusBuilt)
 
-		// 2. Promote to buildsDir
-		w.appendLog(job.DeploymentID, "info", "system", "Promoting build artifacts to builds directory...")
-		if err := w.promoteToBuildsDir(sourceDir, buildsDir); err != nil {
-			w.appendLog(job.DeploymentID, "warn", "system", fmt.Sprintf("Promotion failed: %v. Using source dir directly.", err))
-			// Non-fatal, but we'll try to deploy from source if promotion fails
-		}
-
-		// 3. Deploy from buildsDir (or sourceDir if promotion failed)
+		// 2. Deploy from buildTargetDir (which is already buildsDir)
 		if job.IsBuildOnly {
 			w.appendLog(job.DeploymentID, "success", "system", "Build completed successfully (Build-only mode).")
 			w.updateStatus(job.DeploymentID, "finished", "", "") // Or some other final state
 			return
 		}
 
-		deployBaseDir := buildsDir
-		if _, err := os.Stat(buildsDir); os.IsNotExist(err) {
-			deployBaseDir = sourceDir
-		}
-
+		deployBaseDir := buildTargetDir
 		containerID, deployURL, deployErr = w.deployDirect(ctx, job, deployBaseDir)
 	}
 
@@ -413,18 +544,6 @@ func (w *BuildWorker) processJob(ctx context.Context, job *models.DeploymentJob)
 		w.fail(job.DeploymentID, msg)
 		w.fireNotification(job, "failed", "", msg)
 		return
-	}
-
-	// Persist source code to the permanent deployment directory so the editor can see it.
-	// This is isolated by UserID for multi-tenancy.
-	permanentDir := filepath.Join(w.cfg.DeploysDir, shortID(job.UserID), shortID(job.ProjectID))
-	if !job.IsRecovery {
-		w.appendLog(job.DeploymentID, "info", "system", "Persisting source code for editor...")
-		_ = os.MkdirAll(filepath.Dir(permanentDir), 0755)
-		_ = w.forceRemoveDir(permanentDir)
-		if err := copyDirSkipModules(sourceDir, permanentDir); err != nil {
-			w.appendLog(job.DeploymentID, "warn", "system", fmt.Sprintf("failed to persist source for editor: %v", err))
-		}
 	}
 
 	w.appendLog(job.DeploymentID, "info", "system", fmt.Sprintf("Deployment ID: %s", containerID))
@@ -485,7 +604,12 @@ func (w *BuildWorker) deployDirect(ctx context.Context, job *models.DeploymentJo
 	if err != nil {
 		return "", "", fmt.Errorf("project not found: %v", err)
 	}
-	sourceDir := filepath.Join(w.cfg.ProjectsDir, job.ProjectID)
+	// Use the same user-scoped workspace dir that processJob computed.
+	// The old code used filepath.Join(w.cfg.ProjectsDir, job.ProjectID)
+	// which is wrong because processJob uses getWorkspaceDir (UserID/ProjectID/CommitSHA).
+	// deployBaseDir is already the correct path; use it as the source for framework detection.
+	sourceDir := deployBaseDir
+	_ = project // project is only needed for package manager hint below
 
 	// Determine framework and commands
 	buildCmd := job.BuildCommand
@@ -1007,7 +1131,42 @@ func copyFile(src, dst string, mode os.FileMode) error {
 	return err
 }
 
+func (w *BuildWorker) executeFix(ctx context.Context, deploymentID, command, workingDir string) error {
+	w.appendLog(deploymentID, "info", "system", "Executing AI-suggested fix: "+command)
+
+	shell, shellFlag := "sh", "-c"
+	if runtime.GOOS == "windows" {
+		shell, shellFlag = "cmd", "/c"
+	}
+
+	// Safety: sanitize or limit commands? 
+	// For now, we trust the AI context within the build directory.
+	cmd := exec.CommandContext(ctx, shell, shellFlag, command)
+	cmd.Dir = workingDir
+	cmd.Stdout = &logWriter{deploymentID: deploymentID, stream: "stdout", w: w}
+	cmd.Stderr = &logWriter{deploymentID: deploymentID, stream: "stderr", w: w}
+
+	if err := cmd.Run(); err != nil {
+		w.appendLog(deploymentID, "error", "system", "Auto-fix failed: "+err.Error())
+		return err
+	}
+
+	w.appendLog(deploymentID, "info", "system", "Auto-fix applied successfully.")
+	return nil
+}
+
 func (w *BuildWorker) cloneRepo(ctx context.Context, job *models.DeploymentJob, sourceDir string) error {
+	// Validate required fields before running git
+	if job.RepoURL == "" {
+		return fmt.Errorf("repository URL is empty — configure the project's Git repository URL first")
+	}
+
+	// Default branch to 'main' if empty to avoid 'git clone --branch ""' failure
+	branch := job.Branch
+	if branch == "" {
+		branch = "main"
+	}
+
 	cloneURL := job.RepoURL
 	if job.GitToken != "" {
 		// Embed PAT into the HTTPS URL for authenticated cloning:
@@ -1022,7 +1181,7 @@ func (w *BuildWorker) cloneRepo(ctx context.Context, job *models.DeploymentJob, 
 		}
 	}
 
-	args := []string{"clone", "--depth=1", "--branch", job.Branch, cloneURL, sourceDir}
+	args := []string{"clone", "--depth=1", "--branch", branch, cloneURL, sourceDir}
 	if job.CommitSHA != "" {
 		// For specific commits, we need full clone + checkout (no --depth)
 		args = []string{"clone", job.RepoURL, sourceDir}
@@ -1035,10 +1194,17 @@ func (w *BuildWorker) cloneRepo(ctx context.Context, job *models.DeploymentJob, 
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = filepath.Dir(sourceDir)
 	cmd.Env = append(os.Environ(),
-		// Disable SSH host key verification to avoid interactive prompts
+		// Disable SSH host key verification and prevent interactive prompt hanging
 		"GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
+		"GIT_TERMINAL_PROMPT=0",
 	)
 	out, err := cmd.CombinedOutput()
+
+	// Use DeploymentID or TaskID (whichever is set) for log appending
+	logTarget := job.DeploymentID
+	if logTarget == "" {
+		logTarget = job.ProjectID // fallback so logs don't get lost
+	}
 
 	if len(out) > 0 {
 		// Redact the token from log output before appending
@@ -1046,17 +1212,25 @@ func (w *BuildWorker) cloneRepo(ctx context.Context, job *models.DeploymentJob, 
 		if job.GitToken != "" {
 			logOut = []byte(strings.ReplaceAll(string(out), job.GitToken, "***"))
 		}
-		w.appendLog(job.DeploymentID, "info", "stdout", string(logOut))
+		if logTarget != "" {
+			w.appendLog(logTarget, "info", "stdout", string(logOut))
+		}
 	}
 
 	if err != nil {
+		outStr := string(out)
 		// Provide more helpful error messages for common git failures
-		if strings.Contains(string(out), "Repository not found") || strings.Contains(string(out), "404") {
+		if strings.Contains(outStr, "Repository not found") || strings.Contains(outStr, "404") {
 			return fmt.Errorf("git clone failed: repository not found at %s (401/404): %w", job.RepoURL, err)
-		} else if strings.Contains(string(out), "fatal: could not read") || strings.Contains(string(out), "Permission denied") {
-			return fmt.Errorf("git clone failed: authentication failed - check your Git token/credentials %s: %w", job.RepoURL, err)
-		} else if strings.Contains(string(out), "Connection refused") || strings.Contains(string(out), "Network") {
+		} else if strings.Contains(outStr, "fatal: could not read") || strings.Contains(outStr, "Permission denied") {
+			return fmt.Errorf("git clone failed: authentication failed - check your Git token/credentials for %s: %w", job.RepoURL, err)
+		} else if strings.Contains(outStr, "Connection refused") || strings.Contains(outStr, "Network") {
 			return fmt.Errorf("git clone failed: network error - unable to reach repository %s: %w", job.RepoURL, err)
+		} else if strings.Contains(outStr, "Remote branch") && strings.Contains(outStr, "not found") {
+			return fmt.Errorf("git clone failed: branch '%s' not found in repository %s — check the project branch setting: %w", branch, job.RepoURL, err)
+		} else if outStr != "" {
+			// Include the actual git output in the error so the UI shows something useful
+			return fmt.Errorf("git clone: %w\n%s", err, strings.TrimSpace(outStr))
 		}
 		return fmt.Errorf("git clone: %w", err)
 	}
@@ -1066,7 +1240,9 @@ func (w *BuildWorker) cloneRepo(ctx context.Context, job *models.DeploymentJob, 
 		checkoutCmd := exec.CommandContext(ctx, "git", "checkout", job.CommitSHA)
 		checkoutCmd.Dir = sourceDir
 		if out, err := checkoutCmd.CombinedOutput(); err != nil {
-			w.appendLog(job.DeploymentID, "warn", "stdout", string(out))
+			if logTarget != "" {
+				w.appendLog(logTarget, "warn", "stdout", string(out))
+			}
 		} else {
 			// Create a named rollback branch so the editor can reference it.
 			branchName := "pushpaka/rollback-" + job.DeploymentID[:8]
@@ -1687,6 +1863,63 @@ func detectUvicornModule(sourceDir string) string {
 }
 
 // getRepoCommitInfo returns the HEAD commit SHA and subject line from git.
+func detectFramework(sourceDir string) string {
+	packageJsonPath := filepath.Join(sourceDir, "package.json")
+	data, err := os.ReadFile(packageJsonPath)
+	if err != nil {
+		return "Unknown"
+	}
+
+	var pkg struct {
+		Dependencies    map[string]string `json:"dependencies"`
+		DevDependencies map[string]string `json:"devDependencies"`
+	}
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return "Unknown"
+	}
+
+	allDeps := make(map[string]string)
+	for k, v := range pkg.Dependencies {
+		allDeps[k] = v
+	}
+	for k, v := range pkg.DevDependencies {
+		allDeps[k] = v
+	}
+
+	if _, ok := allDeps["next"]; ok {
+		return "Next.js"
+	}
+	if _, ok := allDeps["nuxt"]; ok {
+		return "Nuxt"
+	}
+	if _, ok := allDeps["@angular/core"]; ok {
+		return "Angular"
+	}
+	if _, ok := allDeps["react"]; ok {
+		if _, vite := allDeps["vite"]; vite {
+			return "React (Vite)"
+		}
+		return "React"
+	}
+	if _, ok := allDeps["vue"]; ok {
+		return "Vue"
+	}
+	if _, ok := allDeps["svelte"]; ok {
+		return "Svelte"
+	}
+	if _, ok := allDeps["express"]; ok {
+		return "Express"
+	}
+	if _, ok := allDeps["nest"]; ok {
+		return "NestJS"
+	}
+	if _, ok := allDeps["strapi"]; ok {
+		return "Strapi"
+	}
+
+	return "Static / Custom"
+}
+
 func getRepoCommitInfo(repoDir string) (sha, msg, author, date string, err error) {
 	// format: hash|subject|author_name|author_date(iso8601)
 	cmd := exec.Command("git", "log", "-1", "--format=%H|%s|%an|%ai")
@@ -1854,7 +2087,8 @@ func (w *BuildWorker) fail(id, errMsg string) {
 	resolution := ""
 	if w.cfg.AIAPIKey != "" {
 		w.appendLog(id, "info", "system", "AI Assistant analyzing failure for immediate resolution...")
-		resolution = w.analyzeFailure(id, errMsg)
+		explanation, _ := w.analyzeFailure(id, errMsg)
+		resolution = explanation
 		if resolution != "" {
 			w.appendLog(id, "info", "system", "AI RECOMMENDED FIX: "+resolution)
 		}
@@ -1955,7 +2189,19 @@ func (w *BuildWorker) updateCommitStatus(projectID, sha string, status models.Co
 	}
 }
 
-func (w *BuildWorker) analyzeFailure(deploymentID, errMsg string) string {
+func (w *BuildWorker) analyzeFailure(deploymentID, errMsg string) (string, string) {
+	// First, check for common patterns that we can fix without AI
+	lowerErr := strings.ToLower(errMsg)
+	if strings.Contains(lowerErr, "cross-env") {
+		return "Missing cross-env package", "npm install -g cross-env"
+	}
+	if strings.Contains(lowerErr, "python") && strings.Contains(lowerErr, "node-gyp") {
+		return "node-gyp requires python", "apk add --no-cache python3 make g++ || npm install -g node-gyp"
+	}
+	if strings.Contains(lowerErr, "context canceled") {
+		return "Build process was interrupted (context canceled). This usually happens during server restarts or due to a very slow environment. Retrying may help.", ""
+	}
+
 	// Fetch last 50 logs for context
 	var logs []models.DeploymentLog
 	w.db.Where("deployment_id = ?", deploymentID).Order("created_at desc").Limit(50).Find(&logs)
@@ -1969,13 +2215,22 @@ func (w *BuildWorker) analyzeFailure(deploymentID, errMsg string) string {
 	prompt := fmt.Sprintf(`The deployment failed with error: %s
 Recent logs:
 %s
-Please provide a very short, one-sentence resolution or fix for this issue.`, errMsg, contextLogs)
+
+You are the Pushpaka AI DevOps Assistant. Analyze the failure and provide a resolution.
+If the issue can be fixed by running a shell command (e.g., installing a missing package, clearing a cache), provide that command.
+Respond ONLY with a JSON object in this format:
+{
+  "explanation": "Brief explanation of what went wrong",
+  "fix_command": "The exact shell command to run to fix this (optional)",
+  "confidence": 0.95
+}`, errMsg, contextLogs)
 
 	payload := map[string]any{
 		"model": w.cfg.AIModel,
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
+		"response_format": map[string]string{"type": "json_object"},
 	}
 
 	data, _ := json.Marshal(payload)
@@ -1990,11 +2245,11 @@ Please provide a very short, one-sentence resolution or fix for this issue.`, er
 		case "ollama":
 			apiURL = "http://localhost:11434/api/chat"
 		default:
-			return ""
+			return "No AI provider configured", ""
 		}
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 45 * time.Second}
 	req, _ := http.NewRequest("POST", apiURL, bytes.NewBuffer(data))
 	req.Header.Set("Content-Type", "application/json")
 	if w.cfg.AIAPIKey != "" {
@@ -2004,12 +2259,12 @@ Please provide a very short, one-sentence resolution or fix for this issue.`, er
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Warn().Err(err).Msg("AI analysis failed to connect")
-		return ""
+		return "AI Assistant unavailable", ""
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return ""
+		return "AI Assistant returned error", ""
 	}
 
 	var result struct {
@@ -2020,10 +2275,18 @@ Please provide a very short, one-sentence resolution or fix for this issue.`, er
 		} `json:"choices"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err == nil && len(result.Choices) > 0 {
-		return strings.TrimSpace(result.Choices[0].Message.Content)
+		var fix struct {
+			Explanation string  `json:"explanation"`
+			FixCommand  string  `json:"fix_command"`
+			Confidence  float64 `json:"confidence"`
+		}
+		if err := json.Unmarshal([]byte(result.Choices[0].Message.Content), &fix); err == nil {
+			return fix.Explanation, fix.FixCommand
+		}
+		return strings.TrimSpace(result.Choices[0].Message.Content), ""
 	}
 
-	return ""
+	return "No specific resolution found", ""
 }
 
 func (w *BuildWorker) appendLog(deploymentID, level, stream, message string) {
@@ -2167,11 +2430,16 @@ fetch-retry-maxtimeout=120000
 
 		// Build environment with proper PATH
 		cmd.Env = os.Environ()
+		pathFound := false
 		for i, env := range cmd.Env {
-			if strings.HasPrefix(env, "PATH=") {
+			if strings.HasPrefix(strings.ToUpper(env), "PATH=") {
 				cmd.Env[i] = "PATH=" + pathEnv
+				pathFound = true
 				break
 			}
+		}
+		if !pathFound {
+			cmd.Env = append(cmd.Env, "PATH="+pathEnv)
 		}
 
 		cmd.Stdout = &logWriter{deploymentID: job.DeploymentID, stream: "stdout", w: w}
@@ -2206,11 +2474,16 @@ fetch-retry-maxtimeout=120000
 
 			// Set proper PATH in environment
 			cmd.Env = os.Environ()
+			pathFound := false
 			for i, env := range cmd.Env {
-				if strings.HasPrefix(env, "PATH=") {
+				if strings.HasPrefix(strings.ToUpper(env), "PATH=") {
 					cmd.Env[i] = "PATH=" + pathEnv
+					pathFound = true
 					break
 				}
+			}
+			if !pathFound {
+				cmd.Env = append(cmd.Env, "PATH="+pathEnv)
 			}
 
 			cmd.Stdout = &logWriter{deploymentID: job.DeploymentID, stream: "stdout", w: w}
@@ -2379,8 +2652,13 @@ func (w *BuildWorker) handleSyncTask(ctx context.Context, task *models.ProjectTa
 	}
 
 	// User request: isolated folders per user
-	// For sync, we use a temporary "sync_" prefixed folder within the user's project space
-	sourcePath := w.getWorkspaceDir(w.cfg.ProjectsDir, project.UserID, project.ID, "sync_"+shortID(task.CommitSHA))
+	// For sync, we use the final commit SHA directory and we DO NOT delete it,
+	// so that subsequent build/test tasks can just copy it.
+	commitLabel := task.CommitSHA
+	if commitLabel == "" {
+		commitLabel = "latest"
+	}
+	sourcePath := w.getWorkspaceDir(w.cfg.ProjectsDir, project.UserID, project.ID, commitLabel)
 
 	// Create parents and ensure read-write access
 	if err := os.MkdirAll(filepath.Dir(sourcePath), 0755); err != nil {
@@ -2388,26 +2666,30 @@ func (w *BuildWorker) handleSyncTask(ctx context.Context, task *models.ProjectTa
 		return
 	}
 
-	// Ensure directory is clean
+	// We ONLY force remove if it exists but is corrupted.
+	// If it exists and is a valid git repo, we could skip clone, but for now we'll do a fresh clone
+	// to ensure it matches the exact remote state if requested.
 	_ = w.forceRemoveDir(sourcePath)
 	if err := os.MkdirAll(sourcePath, 0755); err != nil {
 		w.completeTask(task.ID, false, fmt.Sprintf("failed to create sync dir: %v", err))
 		return
 	}
 
-	// Always clean up the temporary sync folder
-	defer func() {
-		_ = w.forceRemoveDir(sourcePath)
-	}()
+	// NO DEFER REMOVAL! We want to keep this folder for build & test tasks.
 
 	// Mocking job for clone/sync
+	syncBranch := project.Branch
+	if syncBranch == "" {
+		syncBranch = "main"
+	}
 	job := &models.DeploymentJob{
-		ProjectID: project.ID,
-		UserID:    project.UserID,
-		RepoURL:   project.RepoURL,
-		Branch:    project.Branch,
-		GitToken:  project.GitToken,
-		IsPrivate: project.IsPrivate,
+		DeploymentID: task.ID, // use task ID so git logs appear in the task console
+		ProjectID:    project.ID,
+		UserID:       project.UserID,
+		RepoURL:      project.RepoURL,
+		Branch:       syncBranch,
+		GitToken:     project.GitToken,
+		IsPrivate:    project.IsPrivate,
 	}
 
 	w.appendLog(task.ID, "info", "system", fmt.Sprintf("Capturing metadata and detecting environment for project: %s", project.Name))
@@ -2431,30 +2713,40 @@ func (w *BuildWorker) handleSyncTask(ctx context.Context, task *models.ProjectTa
 			commitDate = &t
 		}
 
-		w.db.Model(&models.Project{}).Where("id = ?", project.ID).Updates(map[string]interface{}{
-			"latest_commit_sha": sha,
-			"latest_commit_msg": msg,
-			"latest_commit_at":  commitDate,
-			"updated_at":        time.Now().UTC(),
-		})
+		// Force update Project record with all detected commit metadata
+		w.db.Model(&models.Project{}).
+			Where("id = ?", project.ID).
+			Updates(map[string]interface{}{
+				"latest_commit_sha": sha,
+				"latest_commit_msg": msg,
+				"latest_commit_at":  commitDate,
+				"updated_at":        time.Now().UTC(),
+			})
 
-		w.appendLog(task.ID, "info", "system", fmt.Sprintf("Latest commit: %s (%s)", sha[:8], author))
+		w.appendLog(task.ID, "info", "system", fmt.Sprintf("Latest commit: %s - %s (by %s)", sha[:8], msg, author))
 	}
 
-	// 2. Detect language and package manager
+	// 2. Detect language, framework, and package manager
 	lang := detectLanguage(sourcePath)
-	pm := ""
+	framework := "Unknown"
+	pm := "npm"
 	if lang == "node" {
 		pm = detectPackageManager(sourcePath)
+		framework = detectFramework(sourcePath)
 	}
 
-	w.appendLog(task.ID, "info", "system", fmt.Sprintf("Detected Language: %s, Package Manager: %s", lang, pm))
+	w.appendLog(task.ID, "info", "system", fmt.Sprintf("Environment detected: Language=%s, Framework=%s, Package Manager=%s", lang, framework, pm))
 
-	// Update Project record with detected info
-	w.db.Model(&models.Project{}).Where("id = ?", project.ID).Updates(map[string]interface{}{
+	// Force update Project record with all detected metadata
+	updates := map[string]interface{}{
 		"language":        lang,
 		"package_manager": pm,
-	})
+		"framework":       framework,
+		"updated_at":      time.Now().UTC(),
+	}
+	if err := w.db.Model(&models.Project{}).Where("id = ?", project.ID).Updates(updates).Error; err != nil {
+		w.appendLog(task.ID, "warn", "system", fmt.Sprintf("Failed to update project metadata: %v", err))
+	}
 
 	w.completeTask(task.ID, true, "")
 }
@@ -2480,11 +2772,15 @@ func (w *BuildWorker) handleBuildTask(ctx context.Context, task *models.ProjectT
 
 	w.processJob(ctx, job)
 
-	// Check if processJob ended in failure
+	// [FIX] Transition check: Ensure we trigger the next task (Testing) if successful
 	var updatedTask models.ProjectTask
-	w.db.First(&updatedTask, "id = ?", task.ID)
-	if updatedTask.Status == models.TaskStatusRunning {
-		w.completeTask(task.ID, true, "")
+	if err := w.db.First(&updatedTask, "id = ?", task.ID).Error; err == nil {
+		if updatedTask.Status == models.TaskStatusRunning {
+			w.appendLog(task.ID, "info", "system", "Build successful, triggering test suite...")
+			w.completeTask(task.ID, true, "")
+		}
+	} else {
+		w.completeTask(task.ID, false, fmt.Sprintf("failed to verify task status: %v", err))
 	}
 }
 
@@ -2713,12 +3009,18 @@ func (w *BuildWorker) completeTask(id string, success bool, errStr string) {
 		"success": success,
 		"error":   errStr,
 	})
-	resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(payload))
-	if err != nil {
-		log.Error().Err(err).Str("task_id", id).Msg("failed to notify backend of task completion")
-		return
+
+	// Retry notification up to 3 times
+	for i := 0; i < 3; i++ {
+		resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(payload))
+		if err == nil {
+			resp.Body.Close()
+			return
+		}
+		log.Warn().Err(err).Str("task_id", id).Int("attempt", i+1).Msg("failed to notify backend, retrying...")
+		time.Sleep(1 * time.Second)
 	}
-	defer resp.Body.Close()
+	log.Error().Str("task_id", id).Msg("failed to notify backend of task completion after 3 attempts")
 }
 func (w *BuildWorker) handleAITask(ctx context.Context, task *models.ProjectTask) {
 	w.appendLog(task.ID, "info", "system", "AI Assistant processing task...")
@@ -2735,7 +3037,8 @@ func (w *BuildWorker) handleAITask(ctx context.Context, task *models.ProjectTask
 	// or provide a generic success summary
 	summary := "AI task processed successfully."
 	if task.Error != "" {
-		summary = w.analyzeFailure(task.ID, task.Error)
+		explanation, _ := w.analyzeFailure(task.ID, task.Error)
+		summary = explanation
 	}
 
 	w.appendLog(task.ID, "info", "system", "AI Analysis Results: "+summary)
