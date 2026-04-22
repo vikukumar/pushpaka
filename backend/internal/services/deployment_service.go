@@ -249,6 +249,10 @@ func (s *DeploymentService) Get(id string) (*models.Deployment, error) {
 	return d, nil
 }
 
+func (s *DeploymentService) GetStats() (map[string]int64, error) {
+	return s.deploymentRepo.GetStats()
+}
+
 func (s *DeploymentService) Delete(id, userID string) error {
 	d, err := s.deploymentRepo.FindByID(id)
 	if err != nil {
@@ -491,7 +495,7 @@ func (s *DeploymentService) SyncRepo(userID, projectID string) (*models.Deployme
 	// 2. Try to get the commit message
 	// If we have a local clone, we can fetch and get the message.
 	// Otherwise, we'll try to get it during the build phase or leave it empty for now.
-	latestMsg := "Sync triggered (awaiting build to fetch message)"
+	latestMsg := "Sync triggered (fetching commit details...)"
 	if project.GitClonePath != "" {
 		// Attempt to fetch and get message if local dir exists
 		fetchCmd := exec.Command("git", "-C", project.GitClonePath, "fetch", "origin", project.Branch)

@@ -267,6 +267,40 @@ export function Sidebar() {
           <NavGroupSection key={group.label} group={group} close={close} />
         ))}
 
+        {/* Admin section — visible to admin users only */}
+        {user?.role === 'admin' && (
+          <>
+            <div className="my-2 border-t border-[var(--border-subtle)]" />
+            <div className="px-3 py-1 text-[9px] font-semibold uppercase tracking-widest text-indigo-500/70">Admin</div>
+            {[{ href: '/dashboard/admin/users', label: 'User Management', icon: Shield }].map(({ href, label, icon: Icon }) => {
+              const isActive = pathname === href || pathname.startsWith(href + '/')
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={close}
+                  className={cn(
+                    'relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium',
+                    'transition-all duration-200 group overflow-hidden',
+                    isActive ? 'text-white' : 'text-indigo-400/70 hover:text-indigo-300'
+                  )}
+                  style={
+                    isActive
+                      ? {
+                          background: 'linear-gradient(90deg, rgba(99,102,241,0.22) 0%, rgba(99,102,241,0.07) 55%, transparent 100%)',
+                          boxShadow: 'inset 3px 0 0 #818cf8',
+                        }
+                      : undefined
+                  }
+                >
+                  <Icon size={15} className={cn('shrink-0', isActive ? 'text-indigo-400' : 'text-indigo-500/50 group-hover:text-indigo-400')} />
+                  <span className="truncate flex-1">{label}</span>
+                </Link>
+              )
+            })}
+          </>
+        )}
+
         {/* Divider */}
         <div className="my-2 border-t border-[var(--border-subtle)]" />
 
@@ -313,18 +347,28 @@ export function Sidebar() {
 
       {/* User section */}
       <div className="p-3 relative shrink-0 border-t border-[var(--border-subtle)]">
-        <div
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-default border border-[var(--border-subtle)] bg-[var(--bg-elevated)]"
-        >
-          <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0"
-            style={{ background: 'linear-gradient(135deg, #4338ca, #6366f1)', boxShadow: '0 2px 8px rgba(99,102,241,0.4)' }}
-          >
-            {user?.name?.[0]?.toUpperCase() || 'U'}
-          </div>
+        <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)]">
+          {/* Avatar */}
+          {user?.avatar_url ? (
+            <img src={user.avatar_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
+          ) : (
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0"
+              style={{ background: 'linear-gradient(135deg, #4338ca, #6366f1)', boxShadow: '0 2px 8px rgba(99,102,241,0.4)' }}
+            >
+              {user?.name?.[0]?.toUpperCase() || 'U'}
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium text-[var(--text-primary)] truncate">{user?.name}</div>
-            <div className="text-[11px] text-slate-500 truncate">{user?.email}</div>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              {user?.role === 'admin' && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 font-semibold flex items-center gap-0.5">
+                  <Shield size={8} /> admin
+                </span>
+              )}
+              <div className="text-[11px] text-slate-500 truncate">{user?.email}</div>
+            </div>
           </div>
           <button onClick={handleLogout} className="text-slate-600 hover:text-red-400 transition-colors p-1 rounded shrink-0" title="Sign out">
             <LogOut size={14} />

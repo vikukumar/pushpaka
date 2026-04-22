@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -12,6 +13,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/mem"
+	"github.com/vikukumar/pushpaka/pkg/models"
 	"gorm.io/gorm"
 )
 
@@ -113,22 +117,68 @@ func (h *HealthHandler) System(c *gin.Context) {
 	totalWorkers, activeJobs := 0, 0
 	syncWorkers, buildWorkers, testWorkers, aiWorkers, deployWorkers := 0, 0, 0, 0, 0
 	syncActive, buildActive, testActive, aiActive, deployActive := 0, 0, 0, 0, 0
-	tracked := h.workerStats != nil
-	if tracked {
-		totalWorkers = h.workerStats.TotalWorkers()
-		activeJobs = h.workerStats.ActiveJobs()
-		syncWorkers = h.workerStats.SyncWorkers()
-		buildWorkers = h.workerStats.BuildWorkers()
-		testWorkers = h.workerStats.TestWorkers()
-		aiWorkers = h.workerStats.AIWorkers()
-		deployWorkers = h.workerStats.DeployWorkers()
+	tracked := false
 
-		syncActive = h.workerStats.SyncActive()
-		buildActive = h.workerStats.BuildActive()
-		testActive = h.workerStats.TestActive()
-		aiActive = h.workerStats.AIActive()
-		deployActive = h.workerStats.DeployActive()
+	// Worker stats from the database (tracks distributed/child process workers)
+	var activeNodes []models.WorkerNode
+	if err := h.db.Where("status = ?", models.WorkerStatusActive).Find(&activeNodes).Error; err == nil {
+		totalWorkers = len(activeNodes)
+		for _, w := range activeNodes {
+			for _, r := range w.Roles {
+				switch r {
+				case "sync":
+					syncWorkers++
+				case "build":
+					buildWorkers++
+				case "test":
+					testWorkers++
+				case "ai":
+					aiWorkers++
+				case "deploy":
+					deployWorkers++
+				}
+			}
+		}
 	}
+
+	// Active jobs from the database (tracks running tasks)
+	var runningTasks []models.ProjectTask
+	if err := h.db.Where("status = ?", models.TaskStatusRunning).Find(&runningTasks).Error; err == nil {
+		activeJobs = len(runningTasks)
+		for _, t := range runningTasks {
+			switch string(t.Type) {
+			case "sync", "fetch":
+				syncActive++
+			case "build":
+				buildActive++
+			case "test":
+				testActive++
+			case "ai":
+				aiActive++
+			case "deploy":
+				deployActive++
+			}
+		}
+	}
+
+	// Legacy track mode is true if we are querying from DB successfully
+	tracked = true
+
+	// Fetch System Load Metrics
+	var memTotal, memUsed uint64
+	var memPercent, cpuPercent float64
+	if v, err := mem.VirtualMemory(); err == nil {
+		memTotal = v.Total
+		memUsed = v.Used
+		memPercent = v.UsedPercent
+	}
+	// Pass 0 to cpu.Percent to get the overall CPU usage without blocking too long
+	if c, err := cpu.Percent(0, false); err == nil && len(c) > 0 {
+		cpuPercent = c[0]
+	}
+
+	hostname, _ := os.Hostname()
+	ipAddr := getOutboundIP()
 
 	c.JSON(http.StatusOK, gin.H{
 		"docker": gin.H{
@@ -161,7 +211,27 @@ func (h *HealthHandler) System(c *gin.Context) {
 			"arch":         runtime.GOARCH,
 			"in_container": inContainer,
 		},
+		"load": gin.H{
+			"cpu_percent": cpuPercent,
+			"ram_total":   memTotal,
+			"ram_used":    memUsed,
+			"ram_percent": memPercent,
+			"hostname":    hostname,
+			"ip":          ipAddr,
+		},
 	})
+}
+
+// getOutboundIP gets the preferred outbound ip of this machine
+func getOutboundIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return "127.0.0.1"
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String()
 }
 
 // checkDockerAvailable probes the Docker socket / named pipe and returns

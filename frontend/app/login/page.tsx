@@ -36,11 +36,15 @@ function LoginContent() {
         const parts = token.split('.')
         const payload = JSON.parse(atob(parts[1]))
         const user = {
-          id:         payload.sub   || '',
-          email:      payload.email || '',
-          name:       payload.name  || 'User',
-          role:       payload.role  || 'user',
-          created_at: '',
+          id:             payload.sub   || '',
+          email:          payload.email || '',
+          name:           payload.name  || 'User',
+          role:           payload.role  || 'user',
+          is_active:      true,
+          avatar_url:     '',
+          oauth_provider: '',
+          created_at:     '',
+          updated_at:     '',
         }
         setAuth(user, token)
         router.push('/dashboard')

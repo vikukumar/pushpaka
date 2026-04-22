@@ -117,3 +117,34 @@ func (r *DeploymentRepository) ListFailedRecent(userID string, limit int) ([]mod
 		Order("created_at DESC").Limit(limit).Find(&dest).Error
 	return dest, err
 }
+
+// FindStuckBuilding returns deployments stuck in "building" state that started before the given threshold time.
+// Used by AI monitoring to detect hung builds.
+func (r *DeploymentRepository) FindStuckBuilding(olderThan time.Time) ([]models.Deployment, error) {
+	basemodel.EnsureSynced[models.Deployment](r.db)
+	var dest []models.Deployment
+	err := r.db.Where("status = ? AND started_at IS NOT NULL AND started_at < ?",
+		models.DeploymentBuilding, olderThan).
+		Order("started_at ASC").Find(&dest).Error
+	return dest, err
+}
+
+// GetStats returns aggregate counts of deployments by status.
+func (r *DeploymentRepository) GetStats() (map[string]int64, error) {
+	basemodel.EnsureSynced[models.Deployment](r.db)
+	var results []struct {
+		Status string
+		Count  int64
+	}
+	err := r.db.Model(&models.Deployment{}).Select("status, count(*) as count").Group("status").Scan(&results).Error
+	if err != nil {
+		return nil, err
+	}
+
+	stats := make(map[string]int64)
+	for _, res := range results {
+		stats[res.Status] = res.Count
+	}
+	return stats, nil
+}
+

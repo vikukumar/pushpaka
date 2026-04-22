@@ -176,6 +176,14 @@ func (h *DeploymentHandler) Promote(c *gin.Context) {
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
-	h.auditSvc.Log(userID, "promote", "deployment", id, nil, c.ClientIP(), c.Request.UserAgent())
 	c.JSON(http.StatusOK, deployment)
+}
+
+func (h *DeploymentHandler) Stats(c *gin.Context) {
+	stats, err := h.deploymentSvc.GetStats()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch deployment stats"})
+		return
+	}
+	c.JSON(http.StatusOK, stats)
 }

@@ -131,12 +131,24 @@ func (w *GitSyncWorker) runSyncWorker(id int) {
 				select {
 				case payload := <-w.queueStats.Chan("sync"):
 					taskID := string(payload)
+					w.queueStats.JobStarted("sync")
 					w.processSyncTask(taskID)
+					w.queueStats.JobFinished("sync")
+				case p := <-w.projectQueue:
+					// Polling detected an auto-sync project
+					w.queueStats.JobStarted("sync")
+					w.syncProject(p)
+					w.queueStats.JobFinished("sync")
 				case <-time.After(1 * time.Second):
 					// No job, loop again
 				}
-			} else if w.rdb == nil {
-				time.Sleep(w.pollInterval)
+			} else {
+				// Standalone mode or minimal config
+				select {
+				case p := <-w.projectQueue:
+					w.syncProject(p)
+				case <-time.After(1 * time.Second):
+				}
 			}
 		}
 	}
@@ -227,8 +239,14 @@ func (w *GitSyncWorker) syncProject(p *models.Project) {
 	}
 	// 2. If new commit detected, create Sync task
 	if latest != nil && latest.SHA != p.LatestCommitSHA {
-		w.logger.Info().Str("project_id", p.ID).Str("sha", latest.SHA).Msg("new commit detected, emitting Sync task")
+		// Check if there's already a pending/running sync task for this project
+		if w.taskDispatcher.taskRepo.Exists(p.ID, models.TaskTypeSync, latest.SHA) {
+			// Already being synced, skip
+			return
+		}
 
+		w.logger.Info().Str("project_id", p.ID).Str("sha", latest.SHA).Msg("new commit detected, emitting Sync task")
+		
 		_, err = w.taskDispatcher.CreateTask(p.ID, models.TaskTypeSync, latest.SHA)
 		if err != nil {
 			w.logger.Error().Err(err).Str("project_id", p.ID).Msg("failed to create sync task")
