@@ -37,7 +37,7 @@ type WorkerNode struct {
 	MemoryTotal   uint64       `json:"memory_total"`
 	CPUCount      int          `json:"cpu_count"`
 	AuthToken     string       `gorm:"type:varchar(512);uniqueIndex" json:"-"` // Hidden from JSON responses
-	Roles         []string     `gorm:"type:json" json:"roles"`                 // syncer, builder, tester, ai
+	Roles         []string     `gorm:"type:text;serializer:json" json:"roles"`  // syncer, builder, tester, ai
 	LastSeenAt    *time.Time   `json:"last_seen_at"`
 }
 

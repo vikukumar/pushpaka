@@ -61,10 +61,15 @@ function renderMarkdown(text: string): string {
   // Use DOMPurify to sanitize the final HTML with a restrictive configuration
   if (typeof window !== 'undefined') {
     return DOMPurify.sanitize(html, { 
-      ALLOWED_TAGS: ['strong', 'code', 'pre', 'li', 'div', 'span', 'br', 'ul', 'ol'],
+      ALLOWED_TAGS: ['strong', 'code', 'pre', 'li', 'div', 'span', 'br', 'ul', 'ol', 'p'],
       ALLOWED_ATTR: ['class'],
-      FORBID_TAGS: ['script', 'style', 'iframe', 'form', 'object'],
-      FORBID_ATTR: ['onclick', 'onerror', 'onmouseover', 'onload'],
+      // Strictly forbid sensitive tags and attributes to prevent XSS bypass
+      FORBID_TAGS: ['script', 'style', 'iframe', 'form', 'object', 'base', 'embed', 'link', 'meta', 'svg', 'math'],
+      FORBID_ATTR: ['onclick', 'onerror', 'onmouseover', 'onload', 'onfocus', 'onblur', 'style', 'action', 'formaction'],
+      // Enforce safe configuration
+      USE_PROFILES: { html: true },
+      SANITIZE_DOM: true,
+      KEEP_CONTENT: false,
     })
   }
   return html

@@ -51,3 +51,11 @@ func (r *TaskRepository) FindByStatus(status models.TaskStatus) ([]models.Projec
 	err := r.db.Where("status = ?", status).Order("created_at ASC").Find(&dest).Error
 	return dest, err
 }
+
+func (r *TaskRepository) Exists(projectID string, taskType models.TaskType, sha string) bool {
+	var count int64
+	r.db.Model(&models.ProjectTask{}).
+		Where("project_id = ? AND type = ? AND commit_sha = ? AND status IN ?", projectID, taskType, sha, []string{string(models.TaskStatusPending), string(models.TaskStatusRunning)}).
+		Count(&count)
+	return count > 0
+}

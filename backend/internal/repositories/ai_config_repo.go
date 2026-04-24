@@ -94,27 +94,27 @@ func (r *AIConfigRepository) ListAlerts(userID string, limit int, onlyUnresolved
 	var alerts []models.AIMonitorAlert
 	q := r.db.Where("user_id = ?", userID)
 	if onlyUnresolved {
-		q = q.Where("resolved = ?", 0)
+		q = q.Where("resolved = ?", false)
 	}
 	err := q.Order("created_at desc").Limit(limit).Find(&alerts).Error
 	return alerts, err
 }
 
 func (r *AIConfigRepository) ResolveAlert(id, userID string) error {
-	return basemodel.Update[models.AIMonitorAlert](r.db, id, map[string]interface{}{"resolved": 1})
+	return basemodel.Update[models.AIMonitorAlert](r.db, id, map[string]interface{}{"resolved": true})
 }
 
 func (r *AIConfigRepository) AlertExistsForDeployment(deploymentID string) (bool, error) {
 	basemodel.EnsureSynced[models.AIMonitorAlert](r.db)
 	var count int64
-	err := r.db.Model(&models.AIMonitorAlert{}).Where("deployment_id = ? AND resolved = ?", deploymentID, 0).Count(&count).Error
+	err := r.db.Model(&models.AIMonitorAlert{}).Where("deployment_id = ? AND resolved = ?", deploymentID, false).Count(&count).Error
 	return count > 0, err
 }
 
 func (r *AIConfigRepository) ListUsersWithMonitoring() ([]string, error) {
 	basemodel.EnsureSynced[models.AIConfig](r.db)
 	var ids []string
-	err := r.db.Model(&models.AIConfig{}).Where("monitoring_enabled = ?", 1).Pluck("user_id", &ids).Error
+	err := r.db.Model(&models.AIConfig{}).Where("monitoring_enabled = ?", true).Pluck("user_id", &ids).Error
 	return ids, err
 }
 

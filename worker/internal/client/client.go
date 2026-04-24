@@ -34,15 +34,17 @@ type WorkerClient struct {
 	db        *gorm.DB
 	cfg       *config.Config
 	pusher    TaskPusher
+	roles     []string
 }
 
-func NewWorkerClient(serverURL, zonePAT string, db *gorm.DB, cfg *config.Config, pusher TaskPusher) *WorkerClient {
+func NewWorkerClient(serverURL, zonePAT string, db *gorm.DB, cfg *config.Config, pusher TaskPusher, roles []string) *WorkerClient {
 	return &WorkerClient{
 		serverURL: strings.TrimRight(serverURL, "/"),
 		zonePAT:   zonePAT,
 		db:        db,
 		cfg:       cfg,
 		pusher:    pusher,
+		roles:     roles,
 	}
 }
 
@@ -72,12 +74,16 @@ func (c *WorkerClient) Start(ctx context.Context) {
 func (c *WorkerClient) connectAndServe(ctx context.Context) error {
 	// 1. Register with the Main API
 	hostname, _ := os.Hostname()
+	if len(c.roles) > 0 {
+		hostname = fmt.Sprintf("%s-%s", hostname, strings.Join(c.roles, "-"))
+	}
 	reqBody := models.RegisterWorkerRequest{
 		ZonePAT:      c.zonePAT,
 		Type:         "vaahan", // Always register as remote node type
 		OS:           runtime.GOOS,
 		Architecture: runtime.GOARCH,
 		Name:         hostname,
+		Roles:        c.roles,
 	}
 	bodyData, _ := json.Marshal(reqBody)
 

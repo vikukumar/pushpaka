@@ -3,11 +3,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { systemApi } from '@/lib/api'
 import { SystemInfo } from '@/types'
-import { Container, GitBranch, Server, Cpu, RefreshCw, Zap, ShieldCheck, Brain } from 'lucide-react'
+import { Container, GitBranch, Server, Cpu, RefreshCw, Zap, ShieldCheck, Brain, Activity } from 'lucide-react'
 
 function StatusDot({ ok, pulse = false }: { ok: boolean; pulse?: boolean }) {
   const color = ok ? '#4ade80' : '#f87171'
-  const glow  = ok ? 'rgba(74,222,128,0.6)' : 'rgba(248,113,113,0.6)'
+  const glow = ok ? 'rgba(74,222,128,0.6)' : 'rgba(248,113,113,0.6)'
   return (
     <span
       className={pulse && ok ? 'animate-glow-pulse' : ''}
@@ -78,166 +78,156 @@ export function SystemStatus() {
     refetchInterval: 10_000,
   })
 
-  if (isLoading) {
-    return (
-      <div className="card space-y-3 animate-pulse">
-        <div className="h-4 rounded" style={{ background: 'rgba(99,102,241,0.15)', width: '40%' }} />
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-14 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)' }} />
-        ))}
-      </div>
-    )
-  }
+  if (isLoading) return <LoadingCard />
+  if (isError || !data) return <ErrorCard />
 
-  if (isError || !data) {
-    return (
-      <div className="card">
-        <p className="text-sm text-red-400">Failed to load system status</p>
-      </div>
-    )
-  }
-
-  const { docker, git, workers, runtime } = data
+  const { docker, git, runtime } = data
 
   return (
-    <div className="card">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <h2
-          className="text-sm font-semibold flex items-center gap-2"
-          style={{
-            background: 'linear-gradient(90deg, #a5b4fc, #67e8f9)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-          }}
-        >
-          <Server size={14} style={{ color: '#818cf8' }} />
-          System Status
-        </h2>
-        <button
-          onClick={() => refetch()}
-          className="p-1.5 rounded-lg transition-colors text-slate-600 hover:text-slate-300"
-          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(99,102,241,0.1)' }}
-          title="Refresh"
-        >
-          <RefreshCw size={12} className={isFetching ? 'animate-spin-slow' : ''} />
-        </button>
+    <div className="space-y-4">
+      {/* 1. Core System Health */}
+      <div className="card">
+        <Header icon={Server} color="#818cf8" title="System Health" onRefresh={refetch} isFetching={isFetching} />
+        <div className="space-y-2.5">
+          <Row
+            icon={Container}
+            iconColor={docker.available ? '#4ade80' : '#f87171'}
+            label="Docker"
+            detail={docker.available ? docker.host || 'Connected' : 'Not found - direct deploy mode'}
+            ok={docker.available}
+          />
+          <Row
+            icon={GitBranch}
+            iconColor={git.available ? '#34d399' : '#f87171'}
+            label="Git"
+            detail={git.version || (git.available ? 'Available' : 'Not found')}
+            ok={git.available}
+          />
+          <Row
+            icon={Zap}
+            iconColor="#22d3ee"
+            label="Runtime"
+            detail={`${runtime.os} / ${runtime.arch}${runtime.in_container ? ' * container' : ''}`}
+            ok
+          />
+        </div>
       </div>
 
-      <div className="space-y-2.5">
-        {/* Docker */}
-        <Row
-          icon={Container}
-          iconColor={docker.available ? '#4ade80' : '#f87171'}
-          label="Docker"
-          detail={docker.available ? docker.host || 'Connected' : 'Not found " direct deploy mode'}
-          ok={docker.available}
-        />
+      {/* 2. Host Node Details (Separated out) */}
+      {data.load && (
+        <div className="card shadow-lg" style={{ border: '1px solid rgba(59,130,246,0.15)' }}>
+          <Header icon={Activity} color="#3b82f6" title="Host Details" />
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[11px] font-mono text-slate-300 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
+                {data.load.hostname}
+              </span>
+              <span className="text-[10px] text-slate-500 font-mono">{data.load.ip}</span>
+            </div>
 
-        {/* Git */}
-        <Row
-          icon={GitBranch}
-          iconColor={git.available ? '#34d399' : '#f87171'}
-          label="Git"
-          detail={git.version || (git.available ? 'Available' : 'Not found')}
-          ok={git.available}
-        />
+            {/* CPU Bar */}
+            <ProgressBar label="CPU Load" percent={data.load.cpu_percent} color="#60a5fa" />
 
-        <Row
-          icon={Cpu}
-          iconColor="#818cf8"
-          label="Build Workers"
-          detail={
-            !workers.tracked
-              ? 'External workers via Redis (untracked)'
-              : `${workers.build} workers \u00b7 ${workers.active_jobs} active \u00b7 ${workers.idle} idle`
-          }
-          ok={!workers.tracked ? true : workers.total > 0}
-          extra={
-            <span
-              className="text-[10px] font-mono px-1.5 py-0.5 rounded"
-              style={{
-                background: 'rgba(99,102,241,0.12)',
-                color: '#818cf8',
-                border: '1px solid rgba(99,102,241,0.2)',
-              }}
-            >
-              {workers.queue_mode}
-            </span>
-          }
-        />
+            {/* RAM Bar */}
+            <ProgressBar
+              label={`RAM Used (${(data.load.ram_used / 1024 / 1024 / 1024).toFixed(1)}GB)`}
+              percent={data.load.ram_percent}
+              color="#a78bfa"
+            />
 
-        {/* Sync Workers */}
-        <Row
-          icon={RefreshCw}
-          iconColor="#fbbf24"
-          label="Sync Workers"
-          detail={`${workers.sync || 0} active sync threads`}
-          ok={workers.sync > 0 || !workers.tracked}
-        />
-
-        {/* Test Workers */}
-        <Row
-          icon={ShieldCheck}
-          iconColor="#10b981"
-          label="Test Workers"
-          detail={`${workers.test || 0} active test runners`}
-          ok={workers.test > 0 || !workers.tracked}
-        />
-
-        {/* AI Workers */}
-        <Row
-          icon={Brain}
-          iconColor="#a855f7"
-          label="AI Workers"
-          detail={`${workers.ai || 0} monitoring instances`}
-          ok={workers.ai > 0 || !workers.tracked}
-        />
-
-        {/* Load indicators for each role */}
-        {workers.tracked && workers.total > 0 && (
-          <div className="space-y-3 pt-2">
-            <h3 className="text-[10px] text-slate-600 uppercase tracking-widest font-bold px-1">Role Loading</h3>
-            
-            {[
-              { label: 'Sync', active: workers.sync_active, total: workers.sync, color: '#fbbf24' },
-              { label: 'Build', active: workers.build_active, total: workers.build, color: '#6366f1' },
-              { label: 'Test', active: workers.test_active, total: workers.test, color: '#10b981' },
-              { label: 'AI', active: workers.ai_active, total: workers.ai, color: '#a855f7' },
-              { label: 'Deploy', active: workers.deploy_active, total: workers.deploy, color: '#f43f5e' },
-            ].map(role => role.total > 0 && (
-              <div key={role.label} className="px-3 py-2 rounded-xl bg-white/[0.015] border border-white/[0.05]">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] text-slate-400 font-medium">{role.label} Load</span>
-                  <span className="text-[10px] text-slate-500 font-mono">{role.active}/{role.total}</span>
-                </div>
-                <div className="h-1 rounded-full bg-white/5 overflow-hidden">
-                  <div 
-                    className="h-full transition-all duration-500 rounded-full"
-                    style={{ 
-                      width: `${(role.active / role.total) * 100}%`,
-                      backgroundColor: role.color,
-                      boxShadow: `0 0 8px ${role.color}40`
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
+            <p className="text-[9px] text-center text-slate-600 font-medium">
+              Total Memory: {(data.load.ram_total / 1024 / 1024 / 1024).toFixed(1)}GB
+            </p>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Runtime */}
-        <Row
-          icon={Zap}
-          iconColor="#22d3ee"
-          label="Runtime"
-          detail={`${runtime.os} / ${runtime.arch}${runtime.in_container ? ' * container' : ''}`}
-          ok
+      {/* 3. Worker Pipeline & Role Loading (Separated out) */}
+      <div className="card shadow-xl" style={{ border: '1px solid rgba(168,85,247,0.1)' }}>
+        <Header icon={Brain} color="#a855f7" title="Role Loading" />
+        <div className="space-y-3">
+          {data.workers.tracked && data.workers.total > 0 ? (
+            [
+              { label: 'Sync', active: data.workers.sync_active, total: data.workers.sync, color: '#fbbf24' },
+              { label: 'Build', active: data.workers.build_active, total: data.workers.build, color: '#6366f1' },
+              { label: 'Test', active: data.workers.test_active, total: data.workers.test, color: '#10b981' },
+              { label: 'AI', active: data.workers.ai_active, total: data.workers.ai, color: '#a855f7' },
+              { label: 'Deploy', active: data.workers.deploy_active, total: data.workers.deploy, color: '#f43f5e' },
+            ].map(role => role.total > 0 && (
+              <ProgressBar
+                key={role.label}
+                label={`${role.label} Workers`}
+                percent={(role.active / role.total) * 100}
+                color={role.color}
+                subtext={`${role.active}/${role.total} active`}
+              />
+            ))
+          ) : (
+            <p className="text-[10px] text-slate-600 text-center py-2">No internal workers tracked</p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Header({ icon: Icon, color, title, onRefresh, isFetching }: any) {
+  return (
+    <div className="flex items-center justify-between mb-4">
+      <h2
+        className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"
+        style={{ color: color }}
+      >
+        <Icon size={14} />
+        {title}
+      </h2>
+      {onRefresh && (
+        <button
+          onClick={onRefresh}
+          className="p-1 rounded-lg transition-colors text-slate-600 hover:text-slate-300 bg-white/5"
+        >
+          <RefreshCw size={10} className={isFetching ? 'animate-spin-slow' : ''} />
+        </button>
+      )}
+    </div>
+  )
+}
+
+function ProgressBar({ label, percent, color, subtext }: { label: string, percent: number, color: string, subtext?: string }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-slate-400 font-medium">{label}</span>
+        <span className="text-[10px] text-slate-500 font-mono">{subtext || `${percent.toFixed(0)}%`}</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+        <div
+          className="h-full transition-all duration-700 rounded-full"
+          style={{
+            width: `${percent}%`,
+            backgroundColor: color,
+            boxShadow: `0 0 10px ${color}40`
+          }}
         />
       </div>
     </div>
   )
 }
 
+function LoadingCard() {
+  return (
+    <div className="card space-y-3 animate-pulse">
+      <div className="h-4 rounded bg-white/5 w-1/3" />
+      <div className="h-14 rounded-xl bg-white/[0.02]" />
+      <div className="h-14 rounded-xl bg-white/[0.02]" />
+    </div>
+  )
+}
 
+function ErrorCard() {
+  return (
+    <div className="card">
+      <p className="text-sm text-red-400">Failed to load system status</p>
+    </div>
+  )
+}

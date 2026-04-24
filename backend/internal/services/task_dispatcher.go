@@ -56,6 +56,12 @@ func (d *TaskDispatcher) CreateTask(projectID string, taskType models.TaskType, 
 		CommitSHA: sha,
 	}
 
+	// Check if a task of this type for this project/commit is already pending or running
+	if d.taskRepo.Exists(projectID, taskType, sha) {
+		// Task already exists, skip creating duplicate
+		return nil, nil
+	}
+
 	if err := d.taskRepo.Create(task); err != nil {
 		return nil, err
 	}
@@ -102,6 +108,18 @@ func (d *TaskDispatcher) dispatchViaTunnel(task *models.ProjectTask) {
 	for _, w := range workers {
 		if w.Status != models.WorkerStatusActive || w.ID == "local" {
 			continue
+		}
+
+		// Ensure this worker supports the task type
+		supportsTask := false
+		for _, r := range w.Roles {
+			if r == string(task.Type) {
+				supportsTask = true
+				break
+			}
+		}
+		if len(w.Roles) > 0 && !supportsTask {
+			continue // Skip this worker if it explicitly lists roles and this task isn't one of them
 		}
 
 		// Try to get tunnel session
@@ -196,6 +214,9 @@ func (d *TaskDispatcher) triggerNextTask(task *models.ProjectTask) {
 		// Success -> Test
 		d.CreateTask(task.ProjectID, models.TaskTypeTest, task.CommitSHA)
 	case models.TaskTypeTest:
+		// Success -> Deploy
+		d.CreateTask(task.ProjectID, models.TaskTypeDeploy, task.CommitSHA)
+	case models.TaskTypeDeploy:
 		// Success -> Mark project as ready for deployment
 		d.projectRepo.UpdateStatus(task.ProjectID, "ready")
 	}
@@ -208,15 +229,15 @@ func (d *TaskDispatcher) GetTask(id string) (*models.ProjectTask, error) {
 	return d.taskRepo.Get(id)
 }
 
-// RecoverStuckTasks finds all tasks currently in "running" state from before the restart
+// RecoverStuckTasks finds all tasks currently in "running" or "pending" state from before the restart
 // and re-queues them for execution. This ensures no tasks are lost during server restarts.
 func (d *TaskDispatcher) RecoverStuckTasks(ctx context.Context) error {
-	// Find all tasks with status "running"
-	tasks, err := d.taskRepo.FindByStatus(models.TaskStatusRunning)
-	if err != nil {
-		d.log.Error().Err(err).Msg("failed to find running tasks for recovery")
-		return err
-	}
+	// Find tasks that were in progress
+	runningTasks, _ := d.taskRepo.FindByStatus(models.TaskStatusRunning)
+	// Find tasks that were waiting
+	pendingTasks, _ := d.taskRepo.FindByStatus(models.TaskStatusPending)
+
+	tasks := append(runningTasks, pendingTasks...)
 
 	if len(tasks) == 0 {
 		return nil
@@ -225,19 +246,21 @@ func (d *TaskDispatcher) RecoverStuckTasks(ctx context.Context) error {
 	d.log.Info().Int("count", len(tasks)).Msg("recovering stuck tasks after restart")
 
 	for _, task := range tasks {
-		// Reset task to pending state for re-execution
-		task.Status = models.TaskStatusPending
-		task.StartedAt = nil
-		task.Error = "Task was interrupted by server restart"
-
-		if err := d.taskRepo.Update(&task); err != nil {
-			d.log.Error().Err(err).Str("task_id", task.ID).Msg("failed to reset stuck task")
-			continue
+		// Reset running tasks to pending state for re-execution
+		if task.Status == models.TaskStatusRunning {
+			task.Status = models.TaskStatusPending
+			task.StartedAt = nil
+			task.Error = "Task was interrupted by server restart"
+			
+			if err := d.taskRepo.Update(&task); err != nil {
+				d.log.Error().Err(err).Str("task_id", task.ID).Msg("failed to reset stuck task")
+				continue
+			}
 		}
 
 		// Re-queue the task
 		d.queueTask(&task)
-		d.log.Info().Str("task_id", task.ID).Str("type", string(task.Type)).Msg("recovered and re-queued stuck task")
+		d.log.Info().Str("task_id", task.ID).Str("type", string(task.Type)).Msg("recovered and re-queued task")
 	}
 
 	return nil
