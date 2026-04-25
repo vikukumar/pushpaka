@@ -24,17 +24,27 @@ const LEVEL_COLORS: Record<string, string> = {
 
 function LogLine({ log, search }: { log: DeploymentLog; search: string }) {
   const color = LEVEL_COLORS[log.level] || 'text-slate-400'
-  const msg = search
-    ? log.message.replace(
-        new RegExp(`(${search})`, 'gi'),
-        '<mark class="bg-yellow-300/30 text-yellow-200 rounded px-0.5">$1</mark>'
+  const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+  const content = (() => {
+    if (!search) return log.message
+
+    const rx = new RegExp(`(${escapeRegExp(search)})`, 'gi')
+    const parts = log.message.split(rx)
+
+    return parts.map((part, i) =>
+      rx.test(part) ? (
+        <mark key={i} className="bg-yellow-300/30 text-yellow-200 rounded px-0.5">{part}</mark>
+      ) : (
+        part
       )
-    : log.message
+    )
+  })()
 
   return (
     <div className={`flex gap-2 px-4 py-0.5 hover:bg-white/[0.03] font-mono text-xs leading-5 ${color}`}>
       <span className="shrink-0 text-slate-600 select-none w-6 text-right">{log.stream === 'stderr' ? '!' : '›'}</span>
-      <span dangerouslySetInnerHTML={{ __html: msg }} />
+      <span>{content}</span>
     </div>
   )
 }
