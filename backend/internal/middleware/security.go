@@ -18,15 +18,6 @@ func SecureHeaders() gin.HandlerFunc {
 		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:;")
 		// Referrer Policy
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
-<<<<<<< HEAD
-<<<<<<< HEAD
-
-=======
-		
->>>>>>> a9c831d (feat: Introduce initial frontend application with AI chatbot and backend terminal access, rate limiting, and security middleware.)
-=======
-
->>>>>>> caaf02b (feat: implement security middleware for HTTP headers and panic recovery.)
 		c.Next()
 	}
 }
