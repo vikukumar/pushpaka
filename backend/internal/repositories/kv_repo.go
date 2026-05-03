@@ -17,7 +17,7 @@ type KVRepository struct {
 func NewKVRepository(path string) (*KVRepository, error) {
 	opts := badger.DefaultOptions(path)
 	// Optimize for fast sync and minimal overhead
-	opts.Logger = nil // Disable verbose logging
+	opts.Logger = nil       // Disable verbose logging
 	opts.SyncWrites = false // We batch sync to postgres later, so async writes are fine here
 
 	db, err := badger.Open(opts)

@@ -147,4 +147,3 @@ func (r *DeploymentRepository) GetStats() (map[string]int64, error) {
 	}
 	return stats, nil
 }
-

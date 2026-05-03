@@ -251,7 +251,7 @@ func (d *TaskDispatcher) RecoverStuckTasks(ctx context.Context) error {
 			task.Status = models.TaskStatusPending
 			task.StartedAt = nil
 			task.Error = "Task was interrupted by server restart"
-			
+
 			if err := d.taskRepo.Update(&task); err != nil {
 				d.log.Error().Err(err).Str("task_id", task.ID).Msg("failed to reset stuck task")
 				continue

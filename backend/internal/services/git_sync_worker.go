@@ -246,7 +246,7 @@ func (w *GitSyncWorker) syncProject(p *models.Project) {
 		}
 
 		w.logger.Info().Str("project_id", p.ID).Str("sha", latest.SHA).Msg("new commit detected, emitting Sync task")
-		
+
 		_, err = w.taskDispatcher.CreateTask(p.ID, models.TaskTypeSync, latest.SHA)
 		if err != nil {
 			w.logger.Error().Err(err).Str("project_id", p.ID).Msg("failed to create sync task")
