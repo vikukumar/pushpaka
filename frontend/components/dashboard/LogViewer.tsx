@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { logsApi } from '@/lib/api'
+import { logsApi, API_URL } from '@/lib/api'
 import { DeploymentLog } from '@/types'
 import { useAuthStore } from '@/lib/auth'
 
@@ -75,7 +75,7 @@ export function LogViewer({ deploymentId, live = false, maxLines = 1000 }: LogVi
     if (!live) return
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return
 
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+    const apiBase = API_URL
     const wsBase  = apiBase.replace(/^http/, 'ws')
     // Attach token as query param — browsers cannot set Authorization header on WS
     const wsURL   = `${wsBase}/api/v1/deployments/${deploymentId}/logs/ws?token=${encodeURIComponent(token || '')}`

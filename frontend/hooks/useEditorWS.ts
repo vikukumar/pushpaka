@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react'
 import { useAuthStore } from '@/lib/auth'
+import { API_URL } from '@/lib/api'
 
 export interface WSMessage {
   type: string
@@ -42,7 +43,7 @@ export function useEditorWS(workspaceId: string, onMessage: (msg: WSMessage) => 
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || ''
+    const apiUrl = API_URL
     const host = apiUrl.replace(/^https?:\/\//, '') || window.location.host
     const url = `${protocol}//${host}/api/v1/editor/ws`
     

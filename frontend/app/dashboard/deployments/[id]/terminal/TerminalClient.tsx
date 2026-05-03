@@ -2,8 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useAuthStore } from '@/lib/auth'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+import { API_URL } from '@/lib/api'
 
 interface Props {
   deploymentId: string
