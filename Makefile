@@ -1,4 +1,4 @@
-.PHONY: dev dev-all build build-api build-worker build-all front-build front-dev clean help
+.PHONY: dev dev-all build build-api build-worker build-all front-build front-dev clean help lint lint-go lint-front
 
 # Detect OS for binary extension
 ifeq ($(OS),Windows_NT)
@@ -7,7 +7,8 @@ else
   EXT :=
 endif
 
-LDFLAGS := -ldflags="-w -s"
+VERSION ?= v1.0.0
+LDFLAGS := -ldflags="-w -s -X main.version=$(VERSION)"
 
 # Development
 
@@ -42,6 +43,18 @@ build-worker:
 
 build-all: build build-worker
 	@echo All binaries built.
+
+# Linting
+
+lint: lint-go lint-front
+
+lint-go:
+	@echo "Linting Go code..."
+	go vet ./backend/... ./worker/... ./cmd/pushpaka/...
+
+lint-front:
+	@echo "Linting frontend..."
+	cd frontend && pnpm lint --quiet
 
 clean:
 	rm -f pushpaka pushpaka.exe pushpaka-api pushpaka-api.exe pushpaka-worker pushpaka-worker.exe pushpaka-dev.db pushpaka-dev.db-shm pushpaka-dev.db-wal
