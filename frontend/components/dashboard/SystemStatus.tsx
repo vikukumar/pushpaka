@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { systemApi } from '@/lib/api'
 import { SystemInfo } from '@/types'
-import { Container, GitBranch, Server, Cpu, RefreshCw, Zap, ShieldCheck, Brain, Activity } from 'lucide-react'
+import { Container, GitBranch, Server, RefreshCw, Zap, Brain, Activity } from 'lucide-react'
 
 function StatusDot({ ok, pulse = false }: { ok: boolean; pulse?: boolean }) {
   const color = ok ? '#4ade80' : '#f87171'

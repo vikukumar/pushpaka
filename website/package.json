@@ -20,7 +20,7 @@
     "@astrojs/check": "^0.9.8",
 >>>>>>> 3f1121a (feat: Initialize frontend dashboard and website projects with their respective package configurations.)
     "@astrojs/tailwind": "^6.0.2",
-    "astro": "^5.18.1",
+    "astro": "^6.1.6",
     "tailwindcss": "^3.4.19"
   },
   "devDependencies": {
