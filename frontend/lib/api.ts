@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { Project, Deployment, EnvVar, ApiResponse, ProjectTask, DeploymentLog } from '@/types'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || ''
 
 export const apiClient = axios.create({
   baseURL: `${API_URL}/api/v1`,

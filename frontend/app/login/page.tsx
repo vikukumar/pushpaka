@@ -3,13 +3,11 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { authApi } from '@/lib/api'
+import { authApi, API_URL } from '@/lib/api'
 import { useAuthStore } from '@/lib/auth'
 import { AuthResponse } from '@/types'
 import toast from 'react-hot-toast'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
 
 function LoginContent() {
   const router = useRouter()

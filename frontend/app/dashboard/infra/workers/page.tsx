@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { workersApi } from '@/lib/api'
+import { workersApi, API_URL } from '@/lib/api'
 import { WorkerNode } from '@/types'
 import { Header } from '@/components/layout/Header'
 import { Server, Shield, RefreshCw, Cpu, HardDrive, Activity, CheckCircle2, XCircle, AlertCircle, Eye, EyeOff, Terminal } from 'lucide-react'
@@ -76,7 +76,7 @@ export default function WorkersPage() {
                 Management Server API URL
               </label>
               <div className="font-mono text-sm text-slate-300">
-                {typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8080'}
+                {typeof window !== 'undefined' ? window.location.origin : (API_URL || 'http://localhost:8080')}
               </div>
             </div>
             

@@ -178,10 +178,14 @@ func (w *BuildWorker) RunInProcess(ctx context.Context, ch <-chan []byte, report
 	// Normalize role for reporting (syncer -> sync, builder -> build)
 	reportRole := w.Role
 	switch reportRole {
-	case "syncer": reportRole = "sync"
-	case "builder": reportRole = "build"
-	case "tester": reportRole = "test"
-	case "deployer": reportRole = "deploy"
+	case "syncer":
+		reportRole = "sync"
+	case "builder":
+		reportRole = "build"
+	case "tester":
+		reportRole = "test"
+	case "deployer":
+		reportRole = "deploy"
 	}
 
 	w.reporter = reporter
@@ -237,7 +241,7 @@ func (w *BuildWorker) runInstallerMode(ctx context.Context) {
 	// Execute inside an isolated shell process to ensure environment changes are contained
 	script := fmt.Sprintf("apk add --no-cache %s", strings.Join(packages, " "))
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", script)
-	
+
 	// Create a new process group to isolate the execution (Linux/macOS specific, but safe to omit or conditionally apply)
 	// For standard isolation, running inside `sh -c` is the requested approach.
 	cmd.Stdout = os.Stdout
@@ -252,7 +256,6 @@ func (w *BuildWorker) runInstallerMode(ctx context.Context) {
 	log.Info().Msg("Installer worker entering idle block")
 	<-ctx.Done()
 }
-
 
 func shortID(id string) string {
 	if len(id) > 8 {
@@ -315,7 +318,6 @@ func (w *BuildWorker) processJob(ctx context.Context, job *models.DeploymentJob)
 		w.fail(job.DeploymentID, fmt.Sprintf("failed to create builds dir: %v", err))
 		return
 	}
-
 
 	// Step 0: Check for Build Cache
 	// IMPORTANT: Only skip if we're in recovery mode AND the build dir has artifacts.
@@ -475,25 +477,25 @@ func (w *BuildWorker) processJob(ctx context.Context, job *models.DeploymentJob)
 			w.appendLog(job.DeploymentID, "info", "system", "Recovery mode: skipping image build")
 		} else {
 			w.appendLog(job.DeploymentID, "info", "system", fmt.Sprintf("Building Docker image: %s", job.ImageTag))
-			
+
 			buildErr := w.buildImage(ctx, job, buildTargetDir)
 			if buildErr != nil {
 				w.appendLog(job.DeploymentID, "error", "system", fmt.Sprintf("Docker build failed: %v", buildErr))
-				
+
 				// Analyze failure for user information, but do NOT retry
 				if w.cfg.AIAPIKey != "" {
 					explanation, _ := w.analyzeFailure(job.DeploymentID, buildErr.Error())
 					if explanation != "" {
-						w.appendLog(job.DeploymentID, "info", "system", "AI Analysis: " + explanation)
+						w.appendLog(job.DeploymentID, "info", "system", "AI Analysis: "+explanation)
 						buildErr = fmt.Errorf("%v (AI: %s)", buildErr, explanation)
 					}
 				}
-				
+
 				w.fail(job.DeploymentID, fmt.Sprintf("build failed: %v", buildErr))
 				w.fireNotification(job, "failed", "", buildErr.Error())
 				return
 			}
-			
+
 			w.appendLog(job.DeploymentID, "info", "system", "Docker image built successfully")
 			// Update ProjectCommit status
 			w.updateCommitStatus(job.ProjectID, job.CommitSHA, models.CommitStatusBuilt)
@@ -511,16 +513,16 @@ func (w *BuildWorker) processJob(ctx context.Context, job *models.DeploymentJob)
 		buildErr := w.runBuildInSource(ctx, job, buildTargetDir)
 		if buildErr != nil {
 			w.appendLog(job.DeploymentID, "error", "system", fmt.Sprintf("Direct build failed: %v", buildErr))
-			
+
 			// Analyze failure for user information, but do NOT retry
 			if w.cfg.AIAPIKey != "" {
 				explanation, _ := w.analyzeFailure(job.DeploymentID, buildErr.Error())
 				if explanation != "" {
-					w.appendLog(job.DeploymentID, "info", "system", "AI Analysis: " + explanation)
+					w.appendLog(job.DeploymentID, "info", "system", "AI Analysis: "+explanation)
 					buildErr = fmt.Errorf("%v (AI: %s)", buildErr, explanation)
 				}
 			}
-			
+
 			w.fail(job.DeploymentID, fmt.Sprintf("build failed: %v", buildErr))
 			w.fireNotification(job, "failed", "", buildErr.Error())
 			return
@@ -1139,7 +1141,7 @@ func (w *BuildWorker) executeFix(ctx context.Context, deploymentID, command, wor
 		shell, shellFlag = "cmd", "/c"
 	}
 
-	// Safety: sanitize or limit commands? 
+	// Safety: sanitize or limit commands?
 	// For now, we trust the AI context within the build directory.
 	cmd := exec.CommandContext(ctx, shell, shellFlag, command)
 	cmd.Dir = workingDir

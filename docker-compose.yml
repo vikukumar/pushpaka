@@ -155,6 +155,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=https://api.${DOMAIN:-localhost}
+        - NEXT_PUBLIC_WS_URL=wss://api.${DOMAIN:-localhost}
     container_name: pushpaka-dashboard
     restart: unless-stopped
     environment:
