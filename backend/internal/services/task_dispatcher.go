@@ -189,7 +189,7 @@ func (d *TaskDispatcher) HandleTaskCompletion(taskID string, success bool, errSt
 		// Trigger AI Fix on failure for critical pipeline tasks, but respect retry limit
 		if task.RetryCount < 3 {
 			d.log.Info().Str("task_id", task.ID).Int("retry_count", task.RetryCount).Msg("task failed, triggering AI self-healing...")
-			
+
 			// Increment retry count for the NEXT attempt
 			task.RetryCount++
 			d.taskRepo.Update(task)

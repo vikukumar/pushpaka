@@ -19,7 +19,7 @@ type Config struct {
 	// ProjectsDir is the persistent directory for project source code.
 	ProjectsDir string
 	// BuildsDir is the persistent directory for build artifacts.
-	BuildsDir string
+	BuildsDir     string
 	DeploysDir    string
 	TestsDir      string
 	RegistryDir   string

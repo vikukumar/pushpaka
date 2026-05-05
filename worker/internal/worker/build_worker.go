@@ -1329,7 +1329,7 @@ func (w *BuildWorker) syncRepo(ctx context.Context, job *models.DeploymentJob, s
 		if u, err := url.Parse(cloneURL); err == nil && (u.Scheme == "https" || u.Scheme == "http") {
 			u.User = url.User(job.GitToken)
 			cloneURL = u.String()
-			
+
 			// Silently update the remote URL
 			updateCmd := exec.CommandContext(ctx, "git", "remote", "set-url", "origin", cloneURL)
 			updateCmd.Dir = sourceDir
@@ -1398,7 +1398,7 @@ func (w *BuildWorker) generateDockerfile(sourceDir string, job *models.Deploymen
 
 		installBuild := pmBuildInstall(pm)
 		installProd := pmProdInstall(pm)
-		
+
 		content = fmt.Sprintf(`FROM node:20-alpine AS deps
 WORKDIR /app
 %sCOPY package.json %s ./
@@ -3145,7 +3145,7 @@ func (w *BuildWorker) handleAITask(ctx context.Context, task *models.ProjectTask
 	}
 
 	w.appendLog(lastDeployment.ID, "info", "system", "Starting AI autonomous repair session...")
-	
+
 	job := &models.DeploymentJob{
 		ProjectID:    project.ID,
 		UserID:       project.UserID,
