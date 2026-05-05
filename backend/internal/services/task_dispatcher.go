@@ -186,9 +186,23 @@ func (d *TaskDispatcher) HandleTaskCompletion(taskID string, success bool, errSt
 		// Chain next task
 		d.triggerNextTask(task)
 	} else if task.Type == models.TaskTypeBuild || task.Type == models.TaskTypeTest || task.Type == models.TaskTypeDeploy {
-		// Trigger AI Fix on failure for critical pipeline tasks
-		d.log.Info().Str("task_id", task.ID).Msg("task failed, triggering AI self-healing...")
-		d.CreateTask(task.ProjectID, models.TaskTypeAIFix, task.CommitSHA)
+		// Trigger AI Fix on failure for critical pipeline tasks, but respect retry limit
+		if task.RetryCount < 3 {
+			d.log.Info().Str("task_id", task.ID).Int("retry_count", task.RetryCount).Msg("task failed, triggering AI self-healing...")
+			
+			// Increment retry count for the NEXT attempt
+			task.RetryCount++
+			d.taskRepo.Update(task)
+
+			aiTask, _ := d.CreateTask(task.ProjectID, models.TaskTypeAIFix, task.CommitSHA)
+			if aiTask != nil {
+				aiTask.Error = task.Error
+				d.taskRepo.Update(aiTask)
+			}
+		} else {
+			d.log.Warn().Str("task_id", task.ID).Msg("task reached maximum retry limit (3), stopping.")
+			d.projectRepo.UpdateStatus(task.ProjectID, "failed")
+		}
 	}
 
 	return nil

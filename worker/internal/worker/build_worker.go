@@ -1197,10 +1197,9 @@ func (w *BuildWorker) cloneRepo(ctx context.Context, job *models.DeploymentJob, 
 		// https://github.com/user/repo  ->  https://<token>@github.com/user/repo
 		if u, err := url.Parse(cloneURL); err == nil &&
 			(u.Scheme == "https" || u.Scheme == "http") {
-			// Use token as password with 'x' as dummy username for GitHub/GitLab/etc
-			// Format: https://x:<token>@github.com/user/repo
-			// This is the standard format that git expects
-			u.User = url.UserPassword("x", job.GitToken)
+			// Use token as username - this is universally supported by GitHub, GitLab, and Bitbucket
+			// Format: https://<token>@github.com/user/repo
+			u.User = url.User(job.GitToken)
 			cloneURL = u.String()
 		}
 	}
@@ -1208,10 +1207,7 @@ func (w *BuildWorker) cloneRepo(ctx context.Context, job *models.DeploymentJob, 
 	args := []string{"clone", "--depth=1", "--branch", branch, cloneURL, sourceDir}
 	if job.CommitSHA != "" {
 		// For specific commits, we need full clone + checkout (no --depth)
-		args = []string{"clone", job.RepoURL, sourceDir}
-		if job.GitToken != "" {
-			args = []string{"clone", cloneURL, sourceDir}
-		}
+		args = []string{"clone", cloneURL, sourceDir}
 	}
 
 	// Run from the parent directory -- sourceDir must not exist yet for git clone.
@@ -1327,7 +1323,21 @@ func (w *BuildWorker) forceRemoveDir(dir string) error {
 func (w *BuildWorker) syncRepo(ctx context.Context, job *models.DeploymentJob, sourceDir string) error {
 	w.appendLog(job.DeploymentID, "info", "system", "Synchronizing repository changes...")
 
-	// 1. Fetch with all refs
+	// 1. Ensure remote URL is up-to-date with token if provided
+	if job.GitToken != "" {
+		cloneURL := job.RepoURL
+		if u, err := url.Parse(cloneURL); err == nil && (u.Scheme == "https" || u.Scheme == "http") {
+			u.User = url.User(job.GitToken)
+			cloneURL = u.String()
+			
+			// Silently update the remote URL
+			updateCmd := exec.CommandContext(ctx, "git", "remote", "set-url", "origin", cloneURL)
+			updateCmd.Dir = sourceDir
+			_ = updateCmd.Run()
+		}
+	}
+
+	// 2. Fetch with all refs
 	fetchCmd := exec.CommandContext(ctx, "git", "fetch", "--all", "--tags", "--prune")
 	fetchCmd.Dir = sourceDir
 	if err := fetchCmd.Run(); err != nil {
@@ -1367,7 +1377,6 @@ func (w *BuildWorker) generateDockerfile(sourceDir string, job *models.Deploymen
 	if _, err := os.Stat(filepath.Join(sourceDir, "package.json")); err == nil {
 		pm := detectPackageManager(sourceDir)
 		lockFile := pmLockFile(pm)
-		installCI := pmCIArgs(pm)
 		buildCmd := pm + " run build"
 		startCmd := pm + " start"
 		if job.BuildCommand != "" {
@@ -1376,18 +1385,20 @@ func (w *BuildWorker) generateDockerfile(sourceDir string, job *models.Deploymen
 		if job.StartCommand != "" {
 			startCmd = job.StartCommand
 		}
-		// Install pm globally in the image if not npm (npm is pre-installed in node image)
+		// Use corepack for pnpm/yarn/bun which is faster and more reliable in Node images
 		pmInstall := ""
 		switch pm {
 		case "pnpm":
-			pmInstall = "RUN npm install -g pnpm\n"
+			pmInstall = "RUN corepack enable && corepack prepare pnpm@latest --activate\n"
 		case "yarn":
-			// node:alpine often has yarn, we skip install if present
-			pmInstall = "RUN if ! command -v yarn >/dev/null; then npm install -g yarn; fi\n"
+			pmInstall = "RUN corepack enable && corepack prepare yarn@latest --activate\n"
 		case "bun":
 			pmInstall = "RUN npm install -g bun\n"
 		}
 
+		installBuild := pmBuildInstall(pm)
+		installProd := pmProdInstall(pm)
+		
 		content = fmt.Sprintf(`FROM node:20-alpine AS deps
 WORKDIR /app
 %sCOPY package.json %s ./
@@ -1402,10 +1413,12 @@ RUN %s
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV production
+%sCOPY package.json %s ./
+RUN %s
 COPY --from=builder /app .
 EXPOSE %d
 CMD [%s]
-`, pmInstall, lockFile, installCI, pmInstall, buildCmd, job.Port, shellToCmdArray(startCmd))
+`, pmInstall, lockFile, installBuild, pmInstall, buildCmd, pmInstall, lockFile, installProd, job.Port, shellToCmdArray(startCmd))
 	} else if _, err := os.Stat(filepath.Join(sourceDir, "go.mod")); err == nil {
 		startCmd := "./app"
 		if job.StartCommand != "" {
@@ -1684,17 +1697,29 @@ func pmInstallArgs(pm string) []string {
 	}
 }
 
-// pmCIArgs returns production-install args suitable for a Dockerfile (uses lockfile).
-func pmCIArgs(pm string) string {
+func pmBuildInstall(pm string) string {
 	switch pm {
 	case "pnpm":
-		return "pnpm install --prod --frozen-lockfile"
+		return "pnpm install"
 	case "yarn":
-		return "yarn install --production --frozen-lockfile"
+		return "yarn install"
+	case "bun":
+		return "bun install"
+	default:
+		return "npm install"
+	}
+}
+
+func pmProdInstall(pm string) string {
+	switch pm {
+	case "pnpm":
+		return "pnpm install --prod --frozen-lockfile || pnpm install --prod"
+	case "yarn":
+		return "yarn install --production --frozen-lockfile || yarn install --production"
 	case "bun":
 		return "bun install --production"
-	default: // npm
-		return "npm ci --omit=dev"
+	default:
+		return "npm ci --omit=dev || npm install --omit=dev"
 	}
 }
 
@@ -1767,6 +1792,11 @@ func detectNodeStartCmd(sourceDir, pm string, port int) string {
 			return fmt.Sprintf("npx serve dist -p %d", port)
 		}
 		return fmt.Sprintf("npx vite preview --port %d --host 0.0.0.0", port)
+	}
+
+	// Next.js
+	if _, isNext := allDeps["next"]; isNext {
+		return "npx next start -p " + fmt.Sprint(port)
 	}
 
 	// Express / generic Node: use "node <main>" (default main: index.js).
@@ -3106,19 +3136,31 @@ func (w *BuildWorker) handleAITask(ctx context.Context, task *models.ProjectTask
 		return
 	}
 
-	w.appendLog(lastDeployment.ID, "info", "system", "Starting AI autonomous repair session...")
+	// Fetch logs for the failed deployment
+	var logs []models.DeploymentLog
+	w.db.Where("deployment_id = ?", lastDeployment.ID).Order("created_at asc").Find(&logs)
+	logContext := ""
+	for _, l := range logs {
+		logContext += fmt.Sprintf("[%s] %s\n", l.Level, l.Message)
+	}
 
+	w.appendLog(lastDeployment.ID, "info", "system", "Starting AI autonomous repair session...")
+	
 	job := &models.DeploymentJob{
 		ProjectID:    project.ID,
 		UserID:       project.UserID,
 		DeploymentID: lastDeployment.ID,
+		RepoURL:      project.RepoURL,
+		Branch:       project.Branch,
+		GitToken:     project.GitToken,
 	}
 
 	// 2. Start AIAgent
 	agent := NewAIAgent(w, &project, job, w.aiSvc)
 
-	// 3. Perform repair
-	err := agent.Repair(task.Error)
+	// 3. Perform repair with full log context
+	fullError := fmt.Sprintf("Error: %s\n\nRecent Logs:\n%s", task.Error, logContext)
+	err := agent.Repair(fullError)
 	if err != nil {
 		w.appendLog(lastDeployment.ID, "error", "system", fmt.Sprintf("AI repair failed: %v", err))
 		w.completeTask(task.ID, false, fmt.Sprintf("AI repair failed: %v", err))

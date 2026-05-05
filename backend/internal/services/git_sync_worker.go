@@ -237,8 +237,8 @@ func (w *GitSyncWorker) syncProject(p *models.Project) {
 		w.logger.Warn().Str("project_id", p.ID).Err(err).Msg("failed to check for updates")
 		return
 	}
-	// 2. If new commit detected, create Sync task
-	if latest != nil && latest.SHA != p.LatestCommitSHA {
+	// 2. If new commit or message detected, create Sync task
+	if latest != nil && (latest.SHA != p.LatestCommitSHA || latest.Message != p.LatestCommitMsg) {
 		// Check if there's already a pending/running sync task for this project
 		if w.taskDispatcher.taskRepo.Exists(p.ID, models.TaskTypeSync, latest.SHA) {
 			// Already being synced, skip
