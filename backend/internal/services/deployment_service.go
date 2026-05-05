@@ -91,7 +91,7 @@ func (s *DeploymentService) Trigger(userID string, req *models.DeployRequest) (*
 	}
 
 	now := time.Now().UTC()
-	imageTag := fmt.Sprintf("pushpaka/%s:%s", project.ID[:8], uuid.New().String()[:8])
+	imageTag := fmt.Sprintf("pushpaka_vahan/%s:%s", project.ID[:8], uuid.New().String()[:8])
 
 	// Determine the public URL for this deployment:
 	//   - If the project has a verified custom domain -> https://<domain>
