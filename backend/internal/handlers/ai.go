@@ -247,7 +247,7 @@ func (h *AIHandler) AgentExecute(c *gin.Context) {
 
 	var req struct {
 		services.AIAgentRequest
-		ApprovedToolCall services.AIToolCall `json:"approved_tool_call"`
+		ApprovedToolCall models.AIToolCall `json:"approved_tool_call"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -266,7 +266,7 @@ func (h *AIHandler) AgentExecute(c *gin.Context) {
 	}
 
 	// 2. Append the tool's result to the message history
-	toolMsg := services.AIAgentMessage{
+	toolMsg := models.AIAgentMessage{
 		Role:       "tool",
 		Content:    resultStr,
 		ToolCallID: req.ApprovedToolCall.ID,

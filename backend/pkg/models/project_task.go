@@ -14,6 +14,7 @@ const (
 	TaskTypeBuild  TaskType = "build"
 	TaskTypeTest   TaskType = "test"
 	TaskTypeDeploy TaskType = "deploy"
+	TaskTypeAIFix  TaskType = "aifix"
 )
 
 type TaskStatus string

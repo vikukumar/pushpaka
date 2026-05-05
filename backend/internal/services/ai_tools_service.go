@@ -12,89 +12,33 @@ import (
 	"github.com/vikukumar/pushpaka/pkg/models"
 )
 
-// --- OpenAI Tool Calling Types ---
-
-// AITool represents an OpenAI-compatible tool definition.
-type AITool struct {
-	Type     string     `json:"type"`
-	Function AIToolFunc `json:"function"`
-}
-
-type AIToolFunc struct {
-	Name        string       `json:"name"`
-	Description string       `json:"description"`
-	Parameters  AIToolParams `json:"parameters"`
-}
-
-type AIToolParams struct {
-	Type       string                         `json:"type"`
-	Properties map[string]AIToolParamProperty `json:"properties"`
-	Required   []string                       `json:"required,omitempty"`
-}
-
-type AIToolParamProperty struct {
-	Type        string `json:"type"`
-	Description string `json:"description"`
-}
-
-// AIToolCall is a tool call requested by the model.
-type AIToolCall struct {
-	ID       string `json:"id"`
-	Type     string `json:"type"`
-	Function struct {
-		Name      string `json:"name"`
-		Arguments string `json:"arguments"`
-	} `json:"function"`
-}
-
-// AIToolResult is the result of executing a tool call.
-type AIToolResult struct {
-	ToolCallID string `json:"tool_call_id"`
-	Content    string `json:"content"`
-}
-
 // AIAgentRequest is the request body for the agent chat endpoint.
 type AIAgentRequest struct {
-	Messages   []AIAgentMessage `json:"messages"`
-	ProjectID  string           `json:"project_id,omitempty"`
-	Autonomous bool             `json:"autonomous"` // If true, execute tools without waiting for approval
-}
-
-// AIAgentMessage represents one chat turn in the agent conversation.
-type AIAgentMessage struct {
-	Role       string       `json:"role"` // user / assistant / tool
-	Content    string       `json:"content"`
-	ToolCallID string       `json:"tool_call_id,omitempty"` // for role=tool
-	ToolCalls  []AIToolCall `json:"tool_calls,omitempty"`   // for role=assistant
+	Messages   []models.AIAgentMessage `json:"messages"`
+	ProjectID  string                  `json:"project_id,omitempty"`
+	Autonomous bool                    `json:"autonomous"` // If true, execute tools without waiting for approval
 }
 
 // AIAgentResponse is what the agent endpoint returns.
 type AIAgentResponse struct {
 	// If PendingToolCall is set, the client must approve before the tool runs.
-	PendingToolCall *AIPendingToolCall `json:"pending_tool_call,omitempty"`
+	PendingToolCall *models.AIPendingToolCall `json:"pending_tool_call,omitempty"`
 	// Reply is the final text response when there are no pending approvals.
-	Reply    string           `json:"reply,omitempty"`
-	Messages []AIAgentMessage `json:"messages,omitempty"` // Full updated conversation
-}
-
-// AIPendingToolCall is returned when the AI wants to run a tool but needs approval.
-type AIPendingToolCall struct {
-	ToolCallID string                 `json:"tool_call_id"`
-	ToolName   string                 `json:"tool_name"`
-	Args       map[string]interface{} `json:"args"`
+	Reply    string                  `json:"reply,omitempty"`
+	Messages []models.AIAgentMessage `json:"messages,omitempty"` // Full updated conversation
 }
 
 // PlatformTools returns the list of platform tools available to the AI agent.
-func PlatformTools() []AITool {
-	return []AITool{
+func PlatformTools() []models.AITool {
+	return []models.AITool{
 		{
 			Type: "function",
-			Function: AIToolFunc{
+			Function: models.AIToolFunc{
 				Name:        "get_deployment_logs",
 				Description: "Retrieve the latest logs for a specific deployment. Use this to diagnose errors or check the deployment output.",
-				Parameters: AIToolParams{
+				Parameters: models.AIToolParams{
 					Type: "object",
-					Properties: map[string]AIToolParamProperty{
+					Properties: map[string]models.AIToolParamProperty{
 						"deployment_id": {
 							Type:        "string",
 							Description: "The UUID of the deployment to get logs for.",
@@ -106,12 +50,12 @@ func PlatformTools() []AITool {
 		},
 		{
 			Type: "function",
-			Function: AIToolFunc{
+			Function: models.AIToolFunc{
 				Name:        "get_project_deployments",
 				Description: "List all deployments for a project, including their status (running, failed, stopped, queued).",
-				Parameters: AIToolParams{
+				Parameters: models.AIToolParams{
 					Type: "object",
-					Properties: map[string]AIToolParamProperty{
+					Properties: map[string]models.AIToolParamProperty{
 						"project_id": {
 							Type:        "string",
 							Description: "The UUID of the project.",
@@ -123,12 +67,12 @@ func PlatformTools() []AITool {
 		},
 		{
 			Type: "function",
-			Function: AIToolFunc{
+			Function: models.AIToolFunc{
 				Name:        "restart_deployment",
 				Description: "Restart a deployment by re-building and re-deploying the same commit. Use when a deployment crashed or needs to be restarted after fixing config.",
-				Parameters: AIToolParams{
+				Parameters: models.AIToolParams{
 					Type: "object",
-					Properties: map[string]AIToolParamProperty{
+					Properties: map[string]models.AIToolParamProperty{
 						"deployment_id": {
 							Type:        "string",
 							Description: "The UUID of the deployment to restart.",
@@ -140,12 +84,12 @@ func PlatformTools() []AITool {
 		},
 		{
 			Type: "function",
-			Function: AIToolFunc{
+			Function: models.AIToolFunc{
 				Name:        "sync_project",
 				Description: "Check the git repository for new commits and trigger a deployment if changes are found.",
-				Parameters: AIToolParams{
+				Parameters: models.AIToolParams{
 					Type: "object",
-					Properties: map[string]AIToolParamProperty{
+					Properties: map[string]models.AIToolParamProperty{
 						"project_id": {
 							Type:        "string",
 							Description: "The UUID of the project to sync.",
@@ -157,12 +101,12 @@ func PlatformTools() []AITool {
 		},
 		{
 			Type: "function",
-			Function: AIToolFunc{
+			Function: models.AIToolFunc{
 				Name:        "promote_deployment",
 				Description: "Promote a running deployment to be the live/default deployment for the project. This routes domain traffic to it.",
-				Parameters: AIToolParams{
+				Parameters: models.AIToolParams{
 					Type: "object",
-					Properties: map[string]AIToolParamProperty{
+					Properties: map[string]models.AIToolParamProperty{
 						"deployment_id": {
 							Type:        "string",
 							Description: "The UUID of the running deployment to promote to live/default.",
@@ -174,12 +118,12 @@ func PlatformTools() []AITool {
 		},
 		{
 			Type: "function",
-			Function: AIToolFunc{
+			Function: models.AIToolFunc{
 				Name:        "analyze_deployment_logs",
 				Description: "Run an AI-powered analysis on a deployment's logs to identify errors, crashes, and suggest fixes.",
-				Parameters: AIToolParams{
+				Parameters: models.AIToolParams{
 					Type: "object",
-					Properties: map[string]AIToolParamProperty{
+					Properties: map[string]models.AIToolParamProperty{
 						"deployment_id": {
 							Type:        "string",
 							Description: "The UUID of the deployment to analyze.",
@@ -217,7 +161,7 @@ func (e *AIToolsExecutor) WithUserConfig(userCfg *models.AIConfig, ragDocs []mod
 }
 
 // ExecuteToolCall runs a tool call and returns the string result to include in the conversation.
-func (e *AIToolsExecutor) ExecuteToolCall(ctx context.Context, userID string, call AIToolCall) (string, error) {
+func (e *AIToolsExecutor) ExecuteToolCall(ctx context.Context, userID string, call models.AIToolCall) (string, error) {
 	var args map[string]interface{}
 	if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
 		return "", fmt.Errorf("invalid tool args: %w", err)
@@ -325,11 +269,12 @@ func (s *AIService) ChatWithTools(
 	userID string,
 	userCfg *models.AIConfig,
 	ragDocs []models.RAGDocument,
-	messages []AIAgentMessage,
+	messages []models.AIAgentMessage,
 	executor *AIToolsExecutor,
 	autonomous bool,
 ) (*AIAgentResponse, error) {
-	tools := PlatformTools()
+	registry := NewToolboxRegistry()
+	tools := registry.AllTools()
 
 	systemPrompt := `You are an autonomous DevOps AI assistant for Pushpaka, a self-hosted deployment platform.
 You have access to tools to manage deployments. Use them to help the user diagnose issues, restart failing deployments, sync repositories, and promote healthy deployments to live.
@@ -397,9 +342,9 @@ Guidelines:
 		var result struct {
 			Choices []struct {
 				Message struct {
-					Role      string       `json:"role"`
-					Content   string       `json:"content"`
-					ToolCalls []AIToolCall `json:"tool_calls"`
+					Role      string              `json:"role"`
+					Content   string              `json:"content"`
+					ToolCalls []models.AIToolCall `json:"tool_calls"`
 				} `json:"message"`
 				FinishReason string `json:"finish_reason"`
 			} `json:"choices"`
@@ -419,13 +364,13 @@ Guidelines:
 		choice := result.Choices[0]
 
 		// Build the assistant message for history tracking
-		assistantMsg := AIAgentMessage{
+		assistantMsg := models.AIAgentMessage{
 			Role:      "assistant",
 			Content:   choice.Message.Content,
 			ToolCalls: choice.Message.ToolCalls,
 		}
 		messages = append(messages, assistantMsg)
-		openAIMsgs = append(openAIMsgs, assistantMsg.toOpenAIMap())
+		openAIMsgs = append(openAIMsgs, assistantMsg.ToOpenAIMap())
 
 		// No tool calls — final response
 		if len(choice.Message.ToolCalls) == 0 {
@@ -442,7 +387,7 @@ Guidelines:
 			var tcArgs map[string]interface{}
 			_ = json.Unmarshal([]byte(tc.Function.Arguments), &tcArgs)
 			return &AIAgentResponse{
-				PendingToolCall: &AIPendingToolCall{
+				PendingToolCall: &models.AIPendingToolCall{
 					ToolCallID: tc.ID,
 					ToolName:   tc.Function.Name,
 					Args:       tcArgs,
@@ -461,13 +406,13 @@ Guidelines:
 			if execErr != nil {
 				result = fmt.Sprintf("error: %v", execErr)
 			}
-			toolMsg := AIAgentMessage{
+			toolMsg := models.AIAgentMessage{
 				Role:       "tool",
 				Content:    result,
 				ToolCallID: tc.ID,
 			}
 			messages = append(messages, toolMsg)
-			openAIMsgs = append(openAIMsgs, toolMsg.toOpenAIMap())
+			openAIMsgs = append(openAIMsgs, toolMsg.ToOpenAIMap())
 		}
 		// Loop back to let the AI process the tool results
 	}
@@ -478,17 +423,3 @@ Guidelines:
 	}, nil
 }
 
-// toOpenAIMap serialises a message for the OpenAI API request body.
-func (m AIAgentMessage) toOpenAIMap() map[string]interface{} {
-	msg := map[string]interface{}{
-		"role":    m.Role,
-		"content": m.Content,
-	}
-	if len(m.ToolCalls) > 0 {
-		msg["tool_calls"] = m.ToolCalls
-	}
-	if m.ToolCallID != "" {
-		msg["tool_call_id"] = m.ToolCallID
-	}
-	return msg
-}

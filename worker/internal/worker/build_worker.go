@@ -22,6 +22,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 
+	"github.com/vikukumar/pushpaka/internal/services"
+	backendConfig "github.com/vikukumar/pushpaka/internal/config"
 	"github.com/vikukumar/pushpaka/pkg/basemodel"
 	"github.com/vikukumar/pushpaka/pkg/models"
 	"github.com/vikukumar/pushpaka/worker/internal/config"
@@ -48,9 +50,18 @@ type BuildWorker struct {
 	reporter        JobReporter
 	Role            string
 	Queue           string
+	aiSvc           *services.AIService
 }
 
 func NewBuildWorker(id int, db *gorm.DB, rdb *redis.Client, cfg *config.Config, role, queue string) *BuildWorker {
+	// Map worker config to backend-style config for services compatibility
+	svcCfg := &backendConfig.Config{
+		AIAPIKey:   cfg.AIAPIKey,
+		AIProvider: cfg.AIProvider,
+		AIModel:    cfg.AIModel,
+		AIBaseURL:  cfg.AIBaseURL,
+	}
+
 	return &BuildWorker{
 		id:              id,
 		db:              db,
@@ -59,6 +70,7 @@ func NewBuildWorker(id int, db *gorm.DB, rdb *redis.Client, cfg *config.Config, 
 		dockerAvailable: checkDockerAvailable(cfg.DockerHost),
 		Role:            role,
 		Queue:           queue,
+		aiSvc:           services.NewAIService(svcCfg),
 	}
 }
 
@@ -3035,25 +3047,43 @@ func (w *BuildWorker) completeTask(id string, success bool, errStr string) {
 	}
 	log.Error().Str("task_id", id).Msg("failed to notify backend of task completion after 3 attempts")
 }
-func (w *BuildWorker) handleAITask(ctx context.Context, task *models.ProjectTask) {
-	w.appendLog(task.ID, "info", "system", "AI Assistant processing task...")
 
-	if w.cfg.AIAPIKey == "" {
-		w.completeTask(task.ID, false, "AI API key not configured")
+func (w *BuildWorker) handleAITask(ctx context.Context, task *models.ProjectTask) {
+	// 1. Load project and failed job context
+	var project models.Project
+	if err := w.db.First(&project, "id = ?", task.ProjectID).Error; err != nil {
+		w.completeTask(task.ID, false, "Project not found")
 		return
 	}
 
-	prompt := fmt.Sprintf("Reviewing project task: %s\nSummary: %s", task.Type, task.Log)
-	w.appendLog(task.ID, "info", "system", "Analyzing task with AI: "+prompt)
+	// Find the last failed deployment to provide context to the AI
+	var lastDeployment models.Deployment
+	w.db.Order("created_at desc").First(&lastDeployment, "project_id = ? AND status = ?", task.ProjectID, "failed")
 
-	// Just a simple placeholder for now that uses analyzeFailure if it was an error
-	// or provide a generic success summary
-	summary := "AI task processed successfully."
-	if task.Error != "" {
-		explanation, _ := w.analyzeFailure(task.ID, task.Error)
-		summary = explanation
+	if lastDeployment.ID == "" {
+		w.completeTask(task.ID, false, "No failed deployment found to repair")
+		return
 	}
 
-	w.appendLog(task.ID, "info", "system", "AI Analysis Results: "+summary)
+	w.appendLog(lastDeployment.ID, "info", "system", "Starting AI autonomous repair session...")
+
+	job := &models.DeploymentJob{
+		ProjectID:    project.ID,
+		UserID:       project.UserID,
+		DeploymentID: lastDeployment.ID,
+	}
+
+	// 2. Start AIAgent
+	agent := NewAIAgent(w, &project, job, w.aiSvc)
+	
+	// 3. Perform repair
+	err := agent.Repair(task.Error)
+	if err != nil {
+		w.appendLog(lastDeployment.ID, "error", "system", fmt.Sprintf("AI repair failed: %v", err))
+		w.completeTask(task.ID, false, fmt.Sprintf("AI repair failed: %v", err))
+		return
+	}
+
+	w.appendLog(lastDeployment.ID, "info", "system", "AI repair session completed successfully. You can now retry the deployment.")
 	w.completeTask(task.ID, true, "")
 }

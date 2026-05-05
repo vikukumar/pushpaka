@@ -199,7 +199,7 @@ export interface WorkerNode {
   created_at: string
 }
 
-export type TaskType = 'sync' | 'fetch' | 'build' | 'test' | 'deploy'
+export type TaskType = 'sync' | 'fetch' | 'build' | 'test' | 'deploy' | 'aifix'
 export type TaskState = 'pending' | 'running' | 'completed' | 'failed'
 
 export interface ProjectTask {

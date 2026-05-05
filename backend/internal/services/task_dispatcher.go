@@ -172,6 +172,12 @@ func (d *TaskDispatcher) HandleTaskCompletion(taskID string, success bool, errSt
 		task.Error = errStr
 	}
 
+	ifSuccess := "succeeded"
+	if !success {
+		ifSuccess = "failed"
+	}
+	d.log.Info().Str("task_id", task.ID).Str("status", ifSuccess).Msg("task finished")
+
 	if err := d.taskRepo.Update(task); err != nil {
 		return err
 	}
@@ -179,6 +185,10 @@ func (d *TaskDispatcher) HandleTaskCompletion(taskID string, success bool, errSt
 	if success {
 		// Chain next task
 		d.triggerNextTask(task)
+	} else if task.Type == models.TaskTypeBuild || task.Type == models.TaskTypeTest || task.Type == models.TaskTypeDeploy {
+		// Trigger AI Fix on failure for critical pipeline tasks
+		d.log.Info().Str("task_id", task.ID).Msg("task failed, triggering AI self-healing...")
+		d.CreateTask(task.ProjectID, models.TaskTypeAIFix, task.CommitSHA)
 	}
 
 	return nil
