@@ -224,6 +224,22 @@ func (r *ToolboxRegistry) generateFileSystemTools() []models.AITool {
 		},
 	})
 
+	tools = append(tools, models.AITool{
+		Type: "function",
+		Function: models.AIToolFunc{
+			Name:        "fs_read_file",
+			Description: "Read content from a file in the workspace.",
+			Parameters: models.AIToolParams{
+				Type: "object",
+				Properties: map[string]models.AIToolParamProperty{
+					"project_id": {Type: "string", Description: "Project UUID"},
+					"path":       {Type: "string", Description: "Path relative to workspace"},
+				},
+				Required: []string{"project_id", "path"},
+			},
+		},
+	})
+
 	return tools
 }
 

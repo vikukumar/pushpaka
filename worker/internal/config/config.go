@@ -20,9 +20,9 @@ type Config struct {
 	ProjectsDir string
 	// BuildsDir is the persistent directory for build artifacts.
 	BuildsDir string
-	// DeploysDir is the directory where active deployments run.
 	DeploysDir    string
 	TestsDir      string
+	RegistryDir   string
 	BuildWorkers  int
 	SyncWorkers   int
 	TestWorkers   int
@@ -63,6 +63,7 @@ func Load() *Config {
 		BuildsDir:      getEnv("BUILDS_DIR", defaultBuildsDir()),
 		DeploysDir:     getEnv("DEPLOYS_DIR", deployDir),
 		TestsDir:       getEnv("TESTS_DIR", filepath.Join(defaultPushpakaBase(), "tests")),
+		RegistryDir:    getEnv("REGISTRY_DIR", filepath.Join(defaultPushpakaBase(), "registry")),
 		BuildWorkers:   workers,
 		SyncWorkers:    syncWorkers,
 		TestWorkers:    testWorkers,
@@ -80,7 +81,7 @@ func Load() *Config {
 // EnsureDirs creates CloneDir and DeployDir (and their parents) if they do
 // not already exist. Call this once at worker startup before processing jobs.
 func (c *Config) EnsureDirs() error {
-	dirs := []string{c.CloneDir, c.ProjectsDir, c.BuildsDir, c.DeploysDir, c.TestsDir}
+	dirs := []string{c.CloneDir, c.ProjectsDir, c.BuildsDir, c.DeploysDir, c.TestsDir, c.RegistryDir}
 	for _, dir := range dirs {
 		if dir == "" {
 			continue

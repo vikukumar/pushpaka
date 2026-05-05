@@ -2022,7 +2022,18 @@ func (w *BuildWorker) buildImage(ctx context.Context, job *models.DeploymentJob,
 	if err := cmd.Run(); err != nil {
 		// Retry without BuildKit cache flags (older Docker versions)
 		w.appendLog(job.DeploymentID, "warn", "system",
-			"BuildKit cache failed, retrying without cache flags")
+			"BuildKit cache failed, retrying without cache flags and patching Dockerfile...")
+
+		// Patch Dockerfile to remove --mount if present, as it requires BuildKit
+		dockerfilePath := filepath.Join(sourceDir, "Dockerfile")
+		if content, rerr := os.ReadFile(dockerfilePath); rerr == nil {
+			newContent := strings.ReplaceAll(string(content), "--mount=type=cache", "")
+			// Also handle other mount types just in case
+			newContent = strings.ReplaceAll(newContent, "--mount=type=bind", "")
+			newContent = strings.ReplaceAll(newContent, "--mount=type=tmpfs", "")
+			_ = os.WriteFile(dockerfilePath, []byte(newContent), 0644)
+		}
+
 		plainArgs := []string{"build", "--rm", "-t", job.ImageTag, "."}
 		plain := exec.CommandContext(ctx, "docker", plainArgs...)
 		plain.Dir = sourceDir

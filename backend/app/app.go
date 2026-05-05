@@ -212,6 +212,7 @@ func RunWithOptions(ctx context.Context, opts RunOptions) error {
 		CommitRepo:     commitRepo,
 		TaskRepo:       taskRepo,
 		KVRepo:         kvRepo,
+		RegistryRepo:   registryRepo,
 		RegistrySvc:    registrySvc,
 	}
 

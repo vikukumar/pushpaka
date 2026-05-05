@@ -289,3 +289,15 @@ export const workersApi = {
   getPat: () => apiClient.post('/workers/pat', {}),
 }
 
+// Registry Management
+export const registryApi = {
+  listRepos: (projectId: string) => apiClient.get(`/registry/repos?project_id=${projectId}`),
+  createRepo: (data: { project_id: string; name: string; type: string; description?: string; is_public?: boolean }) =>
+    apiClient.post('/registry/repos', data),
+  deleteRepo: (id: string) => apiClient.delete(`/registry/repos/${id}`),
+  listArtifacts: (repoId: string) => apiClient.get(`/registry/repos/${repoId}/artifacts`),
+  triggerSync: (repoId: string) => apiClient.post(`/registry/repos/${repoId}/sync`),
+  createReplication: (data: { repo_id: string; source_url: string; schedule: string; concurrency?: number }) =>
+    apiClient.post('/registry/replications', data),
+}
+

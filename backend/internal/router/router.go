@@ -61,6 +61,7 @@ type ServiceRegistry struct {
 	EditorRepo     *repositories.EditorStateRepository
 	TaskRepo       *repositories.TaskRepository
 	KVRepo         *repositories.KVRepository
+	RegistryRepo   *repositories.RegistryManagementRepository
 }
 
 // New builds the Gin engine. Pass a non-nil uiFS to serve the embedded
@@ -129,6 +130,8 @@ func New(
 
 	// Create AI Handler
 	aiHandler := handlers.NewAIHandler(aiSvc, logRepo, deploymentRepo, aiConfigRepo, cfg, aiExecutor)
+
+	registryHandler := handlers.NewRegistryHandler(reg.RegistryRepo)
 
 	workerHandler := handlers.NewWorkerHandler(workerSvc)
 	terminalHandler := handlers.NewTerminalHandler(deploymentRepo, cfg)
@@ -302,6 +305,17 @@ func New(
 			{
 				workers.GET("", workerHandler.ListNodes)
 				workers.POST("/pat", workerHandler.GetZonePAT)
+			}
+
+			// Registry Management
+			registry := protected.Group("/registry")
+			{
+				registry.GET("/repos", registryHandler.ListRepos)
+				registry.POST("/repos", registryHandler.CreateRepo)
+				registry.DELETE("/repos/:id", registryHandler.DeleteRepo)
+				registry.GET("/repos/:id/artifacts", registryHandler.ListArtifacts)
+				registry.POST("/repos/:id/sync", registryHandler.TriggerSync)
+				registry.POST("/replications", registryHandler.CreateReplication)
 			}
 
 			// In-browser code editor (file browser + read + save + manipulations)

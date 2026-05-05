@@ -126,7 +126,7 @@ func (a *AIAgent) executeTool(tc models.AIToolCall) string {
 	parts := strings.Split(tc.Function.Name, "_")
 	if len(parts) >= 2 {
 		pm := parts[0]
-		action := parts[1]
+		action := strings.Join(parts[1:], "_")
 
 		switch pm {
 		case "npm", "yarn", "pnpm", "bun":
@@ -151,6 +151,8 @@ func (a *AIAgent) executeTool(tc models.AIToolCall) string {
 				cmdStr = "rm -rf " + path
 			case "mkdir", "mkdir_p":
 				cmdStr = "mkdir -p " + path
+			case "read_file":
+				cmdStr = "cat " + path
 			case "write_file", "write":
 				content := ""
 				if v, ok := args["content"]; ok {

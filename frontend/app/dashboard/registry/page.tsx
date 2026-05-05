@@ -12,12 +12,85 @@ import {
   Activity,
   Box,
   FileCode,
-  Download
+  Download,
+  Trash2,
+  AlertCircle
 } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { registryApi, projectsApi } from '@/lib/api';
+import { toast } from 'react-hot-toast';
 
 export default function RegistryPage() {
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'docker' | 'helm' | 'binary'>('docker');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+
+  // Form State
+  const [newRepoName, setNewRepoName] = useState('');
+  const [newRepoDesc, setNewRepoDesc] = useState('');
+  const [newRepoPublic, setNewRepoPublic] = useState(false);
+
+  // Fetch Projects
+  const { data: projectsData } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => projectsApi.list().then(r => r.data.data),
+  });
+
+  useEffect(() => {
+    if (projectsData?.length > 0 && !selectedProjectId) {
+      setSelectedProjectId(projectsData[0].id);
+    }
+  }, [projectsData, selectedProjectId]);
+
+  // Fetch Repositories
+  const { data: repos, isLoading } = useQuery({
+    queryKey: ['registry', 'repos', selectedProjectId],
+    queryFn: () => registryApi.listRepos(selectedProjectId).then(r => r.data),
+    enabled: !!selectedProjectId,
+  });
+
+  // Create Repo Mutation
+  const createMutation = useMutation({
+    mutationFn: (data: any) => registryApi.createRepo(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['registry', 'repos'] });
+      setIsModalOpen(false);
+      setNewRepoName('');
+      setNewRepoDesc('');
+      toast.success('Repository created successfully');
+    },
+    onError: (err: any) => {
+      toast.error('Failed to create repository: ' + (err.response?.data?.error || err.message));
+    }
+  });
+
+  // Delete Repo Mutation
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => registryApi.deleteRepo(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['registry', 'repos'] });
+      toast.success('Repository deleted');
+    }
+  });
+
+  const filteredRepos = (repos || []).filter((r: any) => 
+    r.type === activeTab && 
+    r.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleCreateRepo = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProjectId) return toast.error('Please select a project');
+    createMutation.mutate({
+      project_id: selectedProjectId,
+      name: newRepoName,
+      type: activeTab,
+      description: newRepoDesc,
+      is_public: newRepoPublic
+    });
+  };
 
   return (
     <div className="p-6 space-y-8 animate-in fade-in duration-700">
@@ -29,30 +102,24 @@ export default function RegistryPage() {
           <p className="text-slate-400 mt-1">Manage your Docker images, Helm charts, and application binaries in one place.</p>
         </div>
         
-        <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 transition-all rounded-lg font-medium shadow-lg shadow-blue-500/20">
-          <Plus size={18} />
-          Create Repository
-        </button>
-      </div>
-
-      {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Images', value: '124', icon: <Box className="text-blue-400" /> },
-          { label: 'Helm Charts', value: '42', icon: <FileCode className="text-purple-400" /> },
-          { label: 'Binaries', value: '89', icon: <Package className="text-emerald-400" /> },
-          { label: 'Active Replications', value: '5', icon: <RefreshCw className="text-orange-400 animate-spin-slow" /> },
-        ].map((stat, i) => (
-          <div key={i} className="bg-slate-900/50 border border-slate-800 p-4 rounded-xl backdrop-blur-md">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-slate-800 rounded-lg">{stat.icon}</div>
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider">{stat.label}</p>
-                <p className="text-xl font-bold text-slate-100">{stat.value}</p>
-              </div>
-            </div>
-          </div>
-        ))}
+        <div className="flex items-center gap-3">
+          <select 
+            className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/50 outline-none"
+            value={selectedProjectId}
+            onChange={(e) => setSelectedProjectId(e.target.value)}
+          >
+            {projectsData?.map((p: any) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 transition-all rounded-lg font-medium shadow-lg shadow-blue-500/20"
+          >
+            <Plus size={18} />
+            Create {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Repo
+          </button>
+        </div>
       </div>
 
       {/* Tabs & Search */}
@@ -86,76 +153,155 @@ export default function RegistryPage() {
       </div>
 
       {/* Repository Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Placeholder for real data mapping */}
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="group relative bg-slate-900/40 border border-slate-800/50 hover:border-blue-500/30 transition-all rounded-2xl overflow-hidden backdrop-blur-xl">
-            <div className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-4">
-                  <div className={`p-3 rounded-2xl ${
-                    activeTab === 'docker' ? 'bg-blue-500/10 text-blue-400' :
-                    activeTab === 'helm' ? 'bg-purple-500/10 text-purple-400' :
-                    'bg-emerald-500/10 text-emerald-400'
-                  }`}>
-                    {activeTab === 'docker' ? <Box size={24} /> : activeTab === 'helm' ? <FileCode size={24} /> : <Package size={24} />}
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-slate-100 group-hover:text-blue-400 transition-colors">
-                      pushpaka-vahan/{activeTab}-repo-{i}
-                    </h3>
-                    <p className="text-sm text-slate-500 line-clamp-1">Last pushed 2 hours ago • 1.2 GB</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-tighter bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-full">
-                    Active
-                  </span>
-                </div>
-              </div>
-
-              <div className="mt-6 flex items-center justify-between">
-                <div className="flex -space-x-2">
-                  {[1, 2, 3].map(t => (
-                    <div key={t} className="w-8 h-8 rounded-full border-2 border-slate-900 bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-400">
-                      v{t}
+      {isLoading ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="h-40 bg-slate-900/50 animate-pulse rounded-2xl border border-slate-800" />
+          ))}
+        </div>
+      ) : filteredRepos.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 bg-slate-900/20 border border-dashed border-slate-800 rounded-3xl">
+          <Database size={48} className="text-slate-700 mb-4" />
+          <h3 className="text-xl font-semibold text-slate-400">No repositories found</h3>
+          <p className="text-slate-500 mt-2">Create your first {activeTab} repository to get started.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {filteredRepos.map((repo: any) => (
+            <div key={repo.id} className="group relative bg-slate-900/40 border border-slate-800/50 hover:border-blue-500/30 transition-all rounded-2xl overflow-hidden backdrop-blur-xl">
+              <div className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className={`p-3 rounded-2xl ${
+                      activeTab === 'docker' ? 'bg-blue-500/10 text-blue-400' :
+                      activeTab === 'helm' ? 'bg-purple-500/10 text-purple-400' :
+                      'bg-emerald-500/10 text-emerald-400'
+                    }`}>
+                      {activeTab === 'docker' ? <Box size={24} /> : activeTab === 'helm' ? <FileCode size={24} /> : <Package size={24} />}
                     </div>
-                  ))}
-                  <div className="w-8 h-8 rounded-full border-2 border-slate-900 bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-500">
-                    +12
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-100 group-hover:text-blue-400 transition-colors">
+                        {repo.name}
+                      </h3>
+                      <p className="text-sm text-slate-500 line-clamp-1">{repo.description || 'No description provided'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {repo.is_public && (
+                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-tighter bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full">
+                        Public
+                      </span>
+                    )}
+                    <button 
+                      onClick={() => deleteMutation.mutate(repo.id)}
+                      className="p-2 text-slate-600 hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-all"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
                 </div>
-                
-                <div className="flex items-center gap-3">
-                   <button className="p-2 text-slate-500 hover:text-blue-400 hover:bg-blue-400/5 rounded-lg transition-all" title="Replication Settings">
-                    <RefreshCw size={18} />
-                  </button>
-                  <button className="flex items-center gap-2 px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-sm transition-all">
-                    Details
-                    <ExternalLink size={14} />
-                  </button>
+
+                <div className="mt-6 flex items-center justify-between">
+                  <div className="flex items-center gap-4 text-xs text-slate-500">
+                    <div className="flex items-center gap-1">
+                      <Download size={12} /> {repo.download_count || 0} pulls
+                    </div>
+                    <div>Created {new Date(repo.created_at).toLocaleDateString()}</div>
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => {
+                        registryApi.triggerSync(repo.id);
+                        toast.success('Sync triggered');
+                      }}
+                      className="p-2 text-slate-500 hover:text-blue-400 hover:bg-blue-400/5 rounded-lg transition-all" 
+                      title="Sync Now"
+                    >
+                      <RefreshCw size={18} />
+                    </button>
+                    <button className="flex items-center gap-2 px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-sm transition-all">
+                      Details
+                      <ExternalLink size={14} />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-            
-            {/* Replication Progress Overlay (Conditional) */}
-            {i === 2 && (
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-800">
-                <div className="h-full bg-blue-500 animate-pulse w-3/4"></div>
+          ))}
+        </div>
+      )}
+
+      {/* Modals */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl p-6 shadow-2xl shadow-blue-500/10">
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <Plus className="text-blue-400" />
+              Create New Repository
+            </h2>
+            <form onSubmit={handleCreateRepo} className="space-y-4">
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Repository Name</label>
+                <input 
+                  autoFocus
+                  required
+                  type="text"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500/50 outline-none"
+                  placeholder="e.g. backend-api"
+                  value={newRepoName}
+                  onChange={e => setNewRepoName(e.target.value)}
+                />
               </div>
-            )}
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Description</label>
+                <textarea 
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500/50 outline-none min-h-[80px]"
+                  placeholder="Optional description..."
+                  value={newRepoDesc}
+                  onChange={e => setNewRepoDesc(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center gap-2 py-2">
+                <input 
+                  type="checkbox"
+                  id="isPublic"
+                  checked={newRepoPublic}
+                  onChange={e => setNewRepoPublic(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-800 bg-slate-950 text-blue-600 focus:ring-blue-500/50"
+                />
+                <label htmlFor="isPublic" className="text-sm text-slate-300">Public visibility</label>
+              </div>
+              
+              <div className="flex gap-3 mt-6">
+                <button 
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg font-medium transition-all"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  disabled={createMutation.isPending}
+                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg font-medium transition-all shadow-lg shadow-blue-500/20"
+                >
+                  {createMutation.isPending ? 'Creating...' : 'Create'}
+                </button>
+              </div>
+            </form>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
 
       {/* Pull Instruction Tip */}
       <div className="bg-blue-500/5 border border-blue-500/10 p-4 rounded-2xl flex items-start gap-4">
-        <Shield className="text-blue-400 shrink-0" size={24} />
+        <AlertCircle className="text-blue-400 shrink-0" size={24} />
         <div>
-          <h4 className="text-sm font-semibold text-blue-300">Registry Pull Instructions</h4>
+          <h4 className="text-sm font-semibold text-blue-300">Registry Access</h4>
           <p className="text-xs text-blue-300/60 mt-1 leading-relaxed">
-            To pull images from this registry, use: <code className="bg-slate-950 px-2 py-0.5 rounded text-blue-400">docker pull {typeof window !== 'undefined' ? window.location.host : 'localhost'}/registry/oci/&lt;project&gt;/&lt;repo&gt;:&lt;tag&gt;</code>. 
-            Ensure you have authenticated using your Pushpaka credentials or a Personal Access Token.
+            To pull from this registry: <code className="bg-slate-950 px-2 py-0.5 rounded text-blue-400">docker pull {typeof window !== 'undefined' ? window.location.host : 'localhost'}/registry/oci/&lt;project_id&gt;/&lt;repo_name&gt;</code>.
+            Use your platform credentials or a Personal Access Token for authentication.
           </p>
         </div>
       </div>

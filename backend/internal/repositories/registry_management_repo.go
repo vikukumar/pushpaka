@@ -64,3 +64,16 @@ func (r *RegistryManagementRepository) UpdateReplicationStatus(id, status, errMs
 	}
 	return r.db.Model(&models.RegistryReplication{}).Where("id = ?", id).Updates(updates).Error
 }
+func (r *RegistryManagementRepository) DeleteRepo(id string) error {
+	return r.db.Where("id = ?", id).Delete(&models.RegistryRepo{}).Error
+}
+func (r *RegistryManagementRepository) UpdateReplicationStatusByRepoID(repoID, status, errMsg string) error {
+	now := models.NowUTC()
+	updates := map[string]interface{}{
+		"status":       status,
+		"error_msg":    errMsg,
+		"updated_at":   now,
+		"last_sync_at": nil, // Reset to force sync
+	}
+	return r.db.Model(&models.RegistryReplication{}).Where("repo_id = ?", repoID).Updates(updates).Error
+}
