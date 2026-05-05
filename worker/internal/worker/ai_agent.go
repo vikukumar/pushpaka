@@ -143,12 +143,43 @@ func (a *AIAgent) executeTool(tc models.AIToolCall) string {
 				path = fmt.Sprint(v)
 			}
 			switch action {
-			case "ls":
+			case "ls", "ls_la":
 				cmdStr = "ls -la " + path
 			case "cat":
 				cmdStr = "cat " + path
-			case "rm":
+			case "rm", "rm_rf":
 				cmdStr = "rm -rf " + path
+			case "mkdir", "mkdir_p":
+				cmdStr = "mkdir -p " + path
+			case "write_file", "write":
+				content := ""
+				if v, ok := args["content"]; ok {
+					content = fmt.Sprint(v)
+				}
+				// Use printf to handle escaping and write to file
+				cmdStr = fmt.Sprintf("printf %%s %q > %s", content, path)
+			case "append":
+				content := ""
+				if v, ok := args["content"]; ok {
+					content = fmt.Sprint(v)
+				}
+				cmdStr = fmt.Sprintf("printf %%s %q >> %s", content, path)
+			}
+		case "docker":
+			target := ""
+			if v, ok := args["target"]; ok {
+				target = fmt.Sprint(v)
+			}
+			extra := ""
+			if v, ok := args["args"]; ok {
+				extra = fmt.Sprint(v)
+			}
+			cmdStr = fmt.Sprintf("docker %s %s %s", action, extra, target)
+		case "fix":
+			switch action {
+			case "docker_buildkit_missing":
+				// Suggest removing --mount if buildx is not available
+				cmdStr = "sed -i 's/--mount=[^ ]* //g' Dockerfile"
 			}
 		}
 	}

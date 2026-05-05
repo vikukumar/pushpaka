@@ -183,6 +183,13 @@ func (s *DeploymentService) Trigger(userID string, req *models.DeployRequest) (*
 	}
 	d.ExternalPort = externalPort
 
+	// Fallback port if none specified in project
+	jobPort := project.Port
+	if jobPort <= 0 {
+		jobPort = 3000
+		log.Info().Str("project_id", project.ID).Msg("No port specified in project, defaulting to 3000 for deployment")
+	}
+
 	job := &models.DeploymentJob{
 		DeploymentID:    d.ID,
 		ProjectID:       project.ID,
@@ -195,7 +202,7 @@ func (s *DeploymentService) Trigger(userID string, req *models.DeployRequest) (*
 		BuildCommand:    project.BuildCommand,
 		StartCommand:    project.StartCommand,
 		RunDir:          project.RunDir,
-		Port:            project.Port,
+		Port:            jobPort,
 		ExternalPort:    externalPort,
 		EnvVars:         envVars,
 		ImageTag:        imageTag,

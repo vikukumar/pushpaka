@@ -165,7 +165,7 @@ func (r *ToolboxRegistry) generateGitTools() []models.AITool {
 
 func (r *ToolboxRegistry) generateDockerTools() []models.AITool {
 	tools := []models.AITool{}
-	for _, action := range []string{"ps", "images", "inspect", "logs", "prune_system", "prune_images", "stats", "network_ls"} {
+	for _, action := range []string{"ps", "images", "inspect", "logs", "prune_system", "prune_images", "stats", "network_ls", "build"} {
 		tools = append(tools, models.AITool{
 			Type: "function",
 			Function: models.AIToolFunc{
@@ -175,6 +175,7 @@ func (r *ToolboxRegistry) generateDockerTools() []models.AITool {
 					Type: "object",
 					Properties: map[string]models.AIToolParamProperty{
 						"target": {Type: "string", Description: "Container or Image ID/name"},
+						"args":   {Type: "string", Description: "Additional CLI arguments (for build etc.)"},
 					},
 				},
 			},
@@ -185,7 +186,7 @@ func (r *ToolboxRegistry) generateDockerTools() []models.AITool {
 
 func (r *ToolboxRegistry) generateFileSystemTools() []models.AITool {
 	tools := []models.AITool{}
-	actions := []string{"ls_la", "cat", "grep", "find", "df_h", "du_sh", "rm_rf", "mkdir_p", "chmod", "chown"}
+	actions := []string{"ls_la", "cat", "write", "append", "grep", "find", "df_h", "du_sh", "rm_rf", "mkdir_p", "chmod", "chown"}
 	for _, action := range actions {
 		tools = append(tools, models.AITool{
 			Type: "function",
@@ -204,6 +205,25 @@ func (r *ToolboxRegistry) generateFileSystemTools() []models.AITool {
 			},
 		})
 	}
+	
+	// Specialized content writing tool
+	tools = append(tools, models.AITool{
+		Type: "function",
+		Function: models.AIToolFunc{
+			Name:        "fs_write_file",
+			Description: "Write content to a file in the workspace. Overwrites existing content.",
+			Parameters: models.AIToolParams{
+				Type: "object",
+				Properties: map[string]models.AIToolParamProperty{
+					"project_id": {Type: "string", Description: "Project UUID"},
+					"path":       {Type: "string", Description: "Path relative to workspace"},
+					"content":    {Type: "string", Description: "Complete content to write"},
+				},
+				Required: []string{"project_id", "path", "content"},
+			},
+		},
+	})
+
 	return tools
 }
 
@@ -220,6 +240,7 @@ func (r *ToolboxRegistry) generateHealerTools() []models.AITool {
 		"fix_missing_env_vars",
 		"fix_git_shallow_clone",
 		"fix_docker_socket_permissions",
+		"fix_docker_buildkit_missing",
 	}
 	for _, fix := range commonFixes {
 		tools = append(tools, models.AITool{

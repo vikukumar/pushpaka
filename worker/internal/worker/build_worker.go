@@ -304,6 +304,16 @@ func (w *BuildWorker) processJob(ctx context.Context, job *models.DeploymentJob)
 	w.updateStatus(job.DeploymentID, initialStatus, "", "")
 	w.appendLog(job.DeploymentID, "info", "system", "Worker process started")
 
+	// Fallback port if none specified
+	if job.Port <= 0 {
+		job.Port = 3000
+		w.appendLog(job.DeploymentID, "info", "system", "No port specified, defaulting to 3000")
+	}
+	if job.ExternalPort <= 0 {
+		// External port should ideally be assigned by the server, but we fallback if needed
+		job.ExternalPort = 8080 
+	}
+
 	if !w.dockerAvailable {
 		w.appendLog(job.DeploymentID, "info", "system", "Docker not available -- deploying directly (no containerization)")
 	}
@@ -1372,10 +1382,12 @@ func (w *BuildWorker) generateDockerfile(sourceDir string, job *models.Deploymen
 		case "pnpm":
 			pmInstall = "RUN npm install -g pnpm\n"
 		case "yarn":
-			pmInstall = "RUN npm install -g yarn\n"
+			// node:alpine often has yarn, we skip install if present
+			pmInstall = "RUN if ! command -v yarn >/dev/null; then npm install -g yarn; fi\n"
 		case "bun":
 			pmInstall = "RUN npm install -g bun\n"
 		}
+		
 		content = fmt.Sprintf(`FROM node:20-alpine AS deps
 WORKDIR /app
 %sCOPY package.json %s ./
@@ -1399,6 +1411,10 @@ CMD [%s]
 		if job.StartCommand != "" {
 			startCmd = job.StartCommand
 		}
+		finalPort := job.Port
+		if finalPort <= 0 {
+			finalPort = 3000
+		}
 		content = fmt.Sprintf(`FROM golang:1.22-alpine AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -1411,11 +1427,15 @@ WORKDIR /app
 COPY --from=builder /app/app .
 EXPOSE %d
 CMD ["%s"]
-`, job.Port, startCmd)
+`, finalPort, startCmd)
 	} else if _, err := os.Stat(filepath.Join(sourceDir, "requirements.txt")); err == nil {
 		startCmd := "python app.py"
 		if job.StartCommand != "" {
 			startCmd = job.StartCommand
+		}
+		finalPort := job.Port
+		if finalPort <= 0 {
+			finalPort = 8000 // Standard for many python apps
 		}
 		content = fmt.Sprintf(`FROM python:3.12-slim
 WORKDIR /app
@@ -1424,11 +1444,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 EXPOSE %d
 CMD [%s]
-`, job.Port, shellToCmdArray(startCmd))
+`, finalPort, shellToCmdArray(startCmd))
 	} else if _, err := os.Stat(filepath.Join(sourceDir, "pyproject.toml")); err == nil {
 		startCmd := "python -m uvicorn main:app --host 0.0.0.0 --port " + fmt.Sprintf("%d", job.Port)
 		if job.StartCommand != "" {
 			startCmd = job.StartCommand
+		}
+		finalPort := job.Port
+		if finalPort <= 0 {
+			finalPort = 8000
 		}
 		content = fmt.Sprintf(`FROM python:3.12-slim
 WORKDIR /app
@@ -1438,14 +1462,11 @@ RUN uv pip install --system -e .
 COPY . .
 EXPOSE %d
 CMD [%s]
-`, job.Port, shellToCmdArray(startCmd))
+`, finalPort, shellToCmdArray(startCmd))
 	} else if _, err := os.Stat(filepath.Join(sourceDir, "Cargo.toml")); err == nil {
 		// Rust project
 		startCmd := "./app"
 		if job.StartCommand != "" {
-			startCmd = job.StartCommand
-		} else if job.BuildCommand != "" {
-			// infer binary name from build command
 			startCmd = job.StartCommand
 		}
 		content = fmt.Sprintf(`FROM rust:1.76-slim AS builder
@@ -2006,7 +2027,9 @@ func (w *BuildWorker) buildImage(ctx context.Context, job *models.DeploymentJob,
 		plain.Dir = sourceDir
 		plain.Stdout = &logWriter{deploymentID: job.DeploymentID, stream: "stdout", w: w}
 		plain.Stderr = &logWriter{deploymentID: job.DeploymentID, stream: "stderr", w: w}
-		_ = plain.Run()
+		if err := plain.Run(); err != nil {
+			return fmt.Errorf("docker build failed: %w", err)
+		}
 	}
 
 	// Cleanup dangling images after build
