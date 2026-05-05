@@ -44,9 +44,11 @@ type Config struct {
 	// Set via DEPLOYS_DIR.
 	DeploysDir string
 	TestsDir   string
-	// KVStorePath is the directory for the fast key-value store (BadgerDB).
-	KVStorePath string
-	LogLevel    string
+	// Registry settings
+	RegistryDir     string
+	RegistryEnabled bool
+	KVStorePath     string
+	LogLevel        string
 
 	// Worker counts
 	BuildWorkers  int
@@ -133,6 +135,8 @@ func Load() *Config {
 		BuildsDir:          getEnv("BUILDS_DIR", defaultBuildsDir()),
 		DeploysDir:         getEnv("DEPLOYS_DIR", deployDir),
 		TestsDir:           getEnv("TESTS_DIR", filepath.Join(defaultPushpakaBase(), "tests")),
+		RegistryDir:        getEnv("REGISTRY_DIR", filepath.Join(defaultPushpakaBase(), "registry")),
+		RegistryEnabled:    getEnv("REGISTRY_ENABLED", "true") == "true",
 		KVStorePath:        getEnv("KV_STORE_PATH", filepath.Join(defaultPushpakaBase(), "kv")),
 		LogLevel:           getEnv("LOG_LEVEL", "info"),
 		BuildWorkers: func() int {
@@ -182,7 +186,7 @@ func Load() *Config {
 
 // EnsureDirs creates CloneDir and DeployDir if they do not already exist.
 func (c *Config) EnsureDirs() error {
-	dirs := []string{c.CloneDir, c.ProjectsDir, c.BuildsDir, c.DeploysDir, c.TestsDir, c.KVStorePath}
+	dirs := []string{c.CloneDir, c.ProjectsDir, c.BuildsDir, c.DeploysDir, c.TestsDir, c.KVStorePath, c.RegistryDir}
 	for _, dir := range dirs {
 		if dir == "" {
 			continue

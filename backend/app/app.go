@@ -127,6 +127,7 @@ func RunWithOptions(ctx context.Context, opts RunOptions) error {
 	gitSyncRepo := repositories.NewGitSyncRepository(db)
 	commitRepo := repositories.NewCommitRepository(db)
 	taskRepo := repositories.NewTaskRepository(db)
+	registryRepo := repositories.NewRegistryManagementRepository(db)
 
 	// Services
 	authSvc := services.NewAuthService(userRepo, cfg)
@@ -144,8 +145,16 @@ func RunWithOptions(ctx context.Context, opts RunOptions) error {
 	aiSvc := services.NewAIService(cfg)
 	aiExecutor := services.NewAIToolsExecutor(deploymentSvc, logSvc, aiSvc)
 
+	registrySvc := services.NewRegistryService(cfg, projectSvc)
+	replicationWorker := services.NewReplicationWorker(cfg, registryRepo, &log.Logger)
+
 	gitSyncSvc := services.NewGitSyncService(gitSyncRepo, projectRepo, deploymentRepo, cfg.ProjectsDir)
 	gitSyncWorker := services.NewGitSyncWorker(gitSyncSvc, gitSyncRepo, deploymentRepo, projectRepo, commitRepo, taskDispatcher, notifSvc, rdb, cfg, &log.Logger)
+
+	// Start Registry Replication Worker if enabled
+	if cfg.RegistryEnabled {
+		replicationWorker.Start(ctx)
+	}
 
 	// Build Workers
 	buildWorkers := make([]*services.BuildWorker, 0, cfg.BuildWorkers)
@@ -203,6 +212,7 @@ func RunWithOptions(ctx context.Context, opts RunOptions) error {
 		CommitRepo:     commitRepo,
 		TaskRepo:       taskRepo,
 		KVRepo:         kvRepo,
+		RegistrySvc:    registrySvc,
 	}
 
 	// Background Tasks

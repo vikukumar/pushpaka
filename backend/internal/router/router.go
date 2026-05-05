@@ -43,6 +43,7 @@ type ServiceRegistry struct {
 	WorkerSvc      *services.WorkerNodeService
 	AIExecutor     *services.AIToolsExecutor
 	TaskDispatcher *services.TaskDispatcher
+	RegistrySvc    *services.RegistryService
 
 	UserRepo       *repositories.UserRepository
 	ProjectRepo    *repositories.ProjectRepository
@@ -111,6 +112,7 @@ func New(
 	workerSvc := reg.WorkerSvc
 	aiExecutor := reg.AIExecutor
 	taskDispatcher := reg.TaskDispatcher
+	registrySvc := reg.RegistrySvc
 
 	// Handlers
 	authHandler := handlers.NewAuthHandler(authSvc)
@@ -348,6 +350,13 @@ func New(
 				admin.PUT("/users/:id/role", adminHandler.UpdateUserRole)
 			}
 		}
+	}
+
+	// Registry Routes (OCI & Binary)
+	// These are served on the same port but separate prefix
+	if registrySvc != nil {
+		r.Any("/registry/oci/*ociPath", gin.WrapF(registrySvc.HandleOCI))
+		r.Any("/registry/binary/*binaryPath", gin.WrapF(registrySvc.HandleBinary))
 	}
 
 	// /app/:projectID -- path-based deployment access (when no custom domain is set).

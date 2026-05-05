@@ -205,7 +205,7 @@ func (r *ToolboxRegistry) generateFileSystemTools() []models.AITool {
 			},
 		})
 	}
-	
+
 	// Specialized content writing tool
 	tools = append(tools, models.AITool{
 		Type: "function",

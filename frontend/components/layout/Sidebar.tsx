@@ -49,6 +49,7 @@ const mainNavItems: NavItem[] = [
   { href: '/dashboard/activity',    label: 'Activity',     icon: Activity },
   { href: '/dashboard/editor',      label: 'Code',         icon: FileCode },
   { href: '/dashboard/files',       label: 'Files',        icon: FilesIcon },
+  { href: '/dashboard/registry',    label: 'Registry',     icon: Database },
   { href: '/dashboard/audit',       label: 'Audit Log',    icon: Shield },
 ]
 

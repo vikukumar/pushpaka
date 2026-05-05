@@ -311,7 +311,7 @@ func (w *BuildWorker) processJob(ctx context.Context, job *models.DeploymentJob)
 	}
 	if job.ExternalPort <= 0 {
 		// External port should ideally be assigned by the server, but we fallback if needed
-		job.ExternalPort = 8080 
+		job.ExternalPort = 8080
 	}
 
 	if !w.dockerAvailable {
@@ -1387,7 +1387,7 @@ func (w *BuildWorker) generateDockerfile(sourceDir string, job *models.Deploymen
 		case "bun":
 			pmInstall = "RUN npm install -g bun\n"
 		}
-		
+
 		content = fmt.Sprintf(`FROM node:20-alpine AS deps
 WORKDIR /app
 %sCOPY package.json %s ./
