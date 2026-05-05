@@ -20,6 +20,7 @@ const taskLabels: Record<TaskType, string> = {
   build: 'Project Build',
   test: 'Automated Testing',
   deploy: 'System Deployment',
+  aifix: 'Autonomous AI Repair',
 }
 
 export function TaskModal({ task, isOpen, onClose, onRestart }: TaskModalProps) {

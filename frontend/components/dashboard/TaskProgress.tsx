@@ -19,6 +19,7 @@ const taskIcons: Record<TaskType, any> = {
   build: Package,
   test: CheckSquare,
   deploy: Package,
+  aifix: RefreshCw,
 }
 
 const taskLabels: Record<TaskType, string> = {
@@ -27,6 +28,7 @@ const taskLabels: Record<TaskType, string> = {
   build: 'Build Project',
   test: 'Run Tests',
   deploy: 'Deployment',
+  aifix: 'AI Repair',
 }
 
 export function TaskProgress({ tasks, onRefresh }: TaskProgressProps) {
