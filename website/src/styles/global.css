@@ -1,3 +1,6 @@
+@import "tailwindcss";
+@config "../../tailwind.config.mjs";
+
 :root {
   --brand-50: #eef2ff;
   --brand-100: #e0e7ff;

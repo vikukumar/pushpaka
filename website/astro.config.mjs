@@ -1,9 +1,11 @@
 import { defineConfig } from 'astro/config';
-import tailwind from '@astrojs/tailwind';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   site: 'https://pushpaka.vikshro.in/',
   base: '/',
-  integrations: [tailwind()],
+  vite: {
+    plugins: [tailwindcss()],
+  },
   output: 'static'
 });

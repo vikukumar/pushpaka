@@ -7,8 +7,8 @@
 ### *Carry your code to the cloud effortlessly.*
 
 [![Version](https://img.shields.io/badge/version-v1.0.0-6366f1?style=flat-square)](https://github.com/vikukumar/pushpaka)
-[![Go](https://img.shields.io/badge/Go-1.25-00ADD8?style=flat-square&logo=go)](https://go.dev)
-[![Next.js](https://img.shields.io/badge/Next.js-16.1-black?style=flat-square&logo=next.js)](https://nextjs.org)
+[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?style=flat-square&logo=go)](https://go.dev)
+[![Next.js](https://img.shields.io/badge/Next.js-16.2-black?style=flat-square&logo=next.js)](https://nextjs.org)
 [![React](https://img.shields.io/badge/React-19.2-61DAFB?style=flat-square&logo=react)](https://react.dev)
 [![Tailwind](https://img.shields.io/badge/Tailwind-4.2-38BDF8?style=flat-square&logo=tailwindcss)](https://tailwindcss.com)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker)](https://docker.com)
@@ -253,7 +253,7 @@ pushpaka/
 
 | Layer | Technology | Version |
 |-------|-----------|---------|
-| Backend language | Go | 1.25 |
+| Backend language | Go | 1.26 |
 | HTTP framework | Gin | 1.12.0 |
 | WebSocket | gorilla/websocket | 1.5.3 |
 | Multiplexer | hashicorp/yamux | 0.1.2 |
@@ -264,7 +264,7 @@ pushpaka/
 | Queue (dev) | In-process channel | — |
 | Metrics | Prometheus client_golang | 1.23.2 |
 | Logging | zerolog | 1.34.0 |
-| Frontend framework | Next.js | 16.1.6 |
+| Frontend framework | Next.js | 16.2.3 |
 | UI library | React | 19.2.4 |
 | Styling | Tailwind CSS | 4.2.1 |
 | Data fetching | TanStack Query | 5.90.21 |
@@ -360,5 +360,5 @@ MIT © 2026 Pushpaka Contributors
 ---
 
 <div align="center">
-  <sub>Built with love — Pushpaka v1.0.0 · Go 1.25 · Next.js 16 · React 19</sub>
+  <sub>Built with love — Pushpaka v1.0.0 · Go 1.26 · Next.js 16.2 · React 19</sub>
 </div>
