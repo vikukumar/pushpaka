@@ -12,6 +12,10 @@ type GitSyncRepository struct {
 }
 
 func NewGitSyncRepository(db *gorm.DB) *GitSyncRepository {
+	basemodel.EnsureSynced[models.GitSyncTrack](db)
+	basemodel.EnsureSynced[models.GitChange](db)
+	basemodel.EnsureSynced[models.GitAutoSyncConfig](db)
+	basemodel.EnsureSynced[models.DeploymentSyncHistory](db)
 	return &GitSyncRepository{db: db}
 }
 

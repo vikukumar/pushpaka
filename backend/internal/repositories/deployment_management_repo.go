@@ -14,6 +14,11 @@ type DeploymentManagementRepository struct {
 }
 
 func NewDeploymentManagementRepository(db *gorm.DB) *DeploymentManagementRepository {
+	basemodel.EnsureSynced[models.DeploymentCodeSignature](db)
+	basemodel.EnsureSynced[models.DeploymentInstance](db)
+	basemodel.EnsureSynced[models.DeploymentBackup](db)
+	basemodel.EnsureSynced[models.DeploymentAction](db)
+	basemodel.EnsureSynced[models.ProjectDeploymentStats](db)
 	return &DeploymentManagementRepository{db: db}
 }
 
@@ -28,6 +33,7 @@ func (r *DeploymentManagementRepository) GetCodeSignature(id string) (*models.De
 }
 
 func (r *DeploymentManagementRepository) GetCodeSignatureByDeployment(deploymentID string) (*models.DeploymentCodeSignature, error) {
+	basemodel.EnsureSynced[models.DeploymentCodeSignature](r.db)
 	var sig models.DeploymentCodeSignature
 	err := r.db.Where("deployment_id = ?", deploymentID).Order("created_at desc").First(&sig).Error
 	if err != nil {
@@ -47,12 +53,14 @@ func (r *DeploymentManagementRepository) GetDeploymentInstance(id string) (*mode
 }
 
 func (r *DeploymentManagementRepository) GetDeploymentInstances(deploymentID string) ([]models.DeploymentInstance, error) {
+	basemodel.EnsureSynced[models.DeploymentInstance](r.db)
 	var instances []models.DeploymentInstance
 	err := r.db.Where("deployment_id = ?", deploymentID).Order("role, created_at").Find(&instances).Error
 	return instances, err
 }
 
 func (r *DeploymentManagementRepository) GetMainDeploymentInstance(projectID string) (*models.DeploymentInstance, error) {
+	basemodel.EnsureSynced[models.DeploymentInstance](r.db)
 	var inst models.DeploymentInstance
 	err := r.db.Where("project_id = ? AND role = ? AND status = 'running'", projectID, models.DeploymentRoleMain).First(&inst).Error
 	if err != nil {
@@ -66,6 +74,7 @@ func (r *DeploymentManagementRepository) UpdateDeploymentInstance(inst *models.D
 }
 
 func (r *DeploymentManagementRepository) DeleteDeploymentInstance(id string) error {
+	basemodel.EnsureSynced[models.DeploymentInstance](r.db)
 	return r.db.Where("id = ?", id).Delete(&models.DeploymentInstance{}).Error
 }
 
@@ -80,12 +89,14 @@ func (r *DeploymentManagementRepository) GetBackup(id string) (*models.Deploymen
 }
 
 func (r *DeploymentManagementRepository) GetBackupsByDeployment(deploymentID string, limit int) ([]models.DeploymentBackup, error) {
+	basemodel.EnsureSynced[models.DeploymentBackup](r.db)
 	var backups []models.DeploymentBackup
 	err := r.db.Where("deployment_id = ?", deploymentID).Order("created_at desc").Limit(limit).Find(&backups).Error
 	return backups, err
 }
 
 func (r *DeploymentManagementRepository) GetOldestBackups(projectID string, keepCount int) ([]models.DeploymentBackup, error) {
+	basemodel.EnsureSynced[models.DeploymentBackup](r.db)
 	var backups []models.DeploymentBackup
 	// To perform the LIMIT (SELECT COUNT(*) - keepCount) logic, it is easier to fetch all, and slice in memory.
 	// Or use an offset. GORM Offset expects an integer.
@@ -106,6 +117,7 @@ func (r *DeploymentManagementRepository) UpdateBackup(backup *models.DeploymentB
 }
 
 func (r *DeploymentManagementRepository) DeleteBackup(id string) error {
+	basemodel.EnsureSynced[models.DeploymentBackup](r.db)
 	return r.db.Where("id = ?", id).Delete(&models.DeploymentBackup{}).Error
 }
 
@@ -120,12 +132,14 @@ func (r *DeploymentManagementRepository) UpdateDeploymentAction(action *models.D
 }
 
 func (r *DeploymentManagementRepository) GetDeploymentActions(deploymentID string, limit int) ([]models.DeploymentAction, error) {
+	basemodel.EnsureSynced[models.DeploymentAction](r.db)
 	var actions []models.DeploymentAction
 	err := r.db.Where("deployment_id = ?", deploymentID).Order("created_at desc").Limit(limit).Find(&actions).Error
 	return actions, err
 }
 
 func (r *DeploymentManagementRepository) GetLastDeploymentAction(deploymentID string) (*models.DeploymentAction, error) {
+	basemodel.EnsureSynced[models.DeploymentAction](r.db)
 	var action models.DeploymentAction
 	err := r.db.Where("deployment_id = ?", deploymentID).Order("created_at desc").First(&action).Error
 	if err != nil {
@@ -137,6 +151,7 @@ func (r *DeploymentManagementRepository) GetLastDeploymentAction(deploymentID st
 // ============= Stats Operations =============
 
 func (r *DeploymentManagementRepository) CreateOrUpdateStats(stats *models.ProjectDeploymentStats) error {
+	basemodel.EnsureSynced[models.ProjectDeploymentStats](r.db)
 	var existing models.ProjectDeploymentStats
 	err := r.db.Where("project_id = ?", stats.ProjectID).First(&existing).Error
 	if err != nil {
@@ -152,6 +167,7 @@ func (r *DeploymentManagementRepository) CreateOrUpdateStats(stats *models.Proje
 }
 
 func (r *DeploymentManagementRepository) GetStats(projectID string) (*models.ProjectDeploymentStats, error) {
+	basemodel.EnsureSynced[models.ProjectDeploymentStats](r.db)
 	var stats models.ProjectDeploymentStats
 	err := r.db.Where("project_id = ?", projectID).First(&stats).Error
 	if err != nil {
@@ -175,6 +191,7 @@ func (r *DeploymentManagementRepository) CountBackupsByProject(projectID string)
 }
 
 func (r *DeploymentManagementRepository) GetProjectDeployments(projectID string) ([]models.DeploymentInstance, error) {
+	basemodel.EnsureSynced[models.DeploymentInstance](r.db)
 	var instances []models.DeploymentInstance
 	err := r.db.Where("project_id = ?", projectID).Order("role, created_at").Find(&instances).Error
 	return instances, err

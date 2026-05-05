@@ -13,6 +13,9 @@ type RegistryManagementRepository struct {
 }
 
 func NewRegistryManagementRepository(db *gorm.DB) *RegistryManagementRepository {
+	basemodel.EnsureSynced[models.RegistryRepo](db)
+	basemodel.EnsureSynced[models.RegistryArtifact](db)
+	basemodel.EnsureSynced[models.RegistryReplication](db)
 	return &RegistryManagementRepository{db: db}
 }
 
@@ -25,6 +28,7 @@ func (r *RegistryManagementRepository) GetRepo(id string) (*models.RegistryRepo,
 }
 
 func (r *RegistryManagementRepository) ListReposByProject(projectID string) ([]models.RegistryRepo, error) {
+	basemodel.EnsureSynced[models.RegistryRepo](r.db)
 	var repos []models.RegistryRepo
 	err := r.db.Where("project_id = ?", projectID).Find(&repos).Error
 	return repos, err
@@ -35,6 +39,7 @@ func (r *RegistryManagementRepository) CreateArtifact(art *models.RegistryArtifa
 }
 
 func (r *RegistryManagementRepository) ListArtifacts(repoID string) ([]models.RegistryArtifact, error) {
+	basemodel.EnsureSynced[models.RegistryArtifact](r.db)
 	var arts []models.RegistryArtifact
 	err := r.db.Where("repo_id = ?", repoID).Order("created_at desc").Find(&arts).Error
 	return arts, err
@@ -45,6 +50,7 @@ func (r *RegistryManagementRepository) CreateReplication(rep *models.RegistryRep
 }
 
 func (r *RegistryManagementRepository) ListPendingReplications() ([]models.RegistryReplication, error) {
+	basemodel.EnsureSynced[models.RegistryReplication](r.db)
 	var reps []models.RegistryReplication
 	// Simple logic: idle replications that haven't sync'd in 1 hour
 	oneHourAgo := time.Now().Add(-1 * time.Hour)
@@ -53,6 +59,7 @@ func (r *RegistryManagementRepository) ListPendingReplications() ([]models.Regis
 }
 
 func (r *RegistryManagementRepository) UpdateReplicationStatus(id, status, errMsg string) error {
+	basemodel.EnsureSynced[models.RegistryReplication](r.db)
 	now := models.NowUTC()
 	updates := map[string]interface{}{
 		"status":     status,
@@ -68,6 +75,7 @@ func (r *RegistryManagementRepository) DeleteRepo(id string) error {
 	return r.db.Where("id = ?", id).Delete(&models.RegistryRepo{}).Error
 }
 func (r *RegistryManagementRepository) UpdateReplicationStatusByRepoID(repoID, status, errMsg string) error {
+	basemodel.EnsureSynced[models.RegistryReplication](r.db)
 	now := models.NowUTC()
 	updates := map[string]interface{}{
 		"status":       status,

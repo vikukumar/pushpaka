@@ -12,6 +12,7 @@ type ProjectRepository struct {
 }
 
 func NewProjectRepository(db *gorm.DB) *ProjectRepository {
+	basemodel.EnsureSynced[models.Project](db)
 	return &ProjectRepository{db: db}
 }
 
