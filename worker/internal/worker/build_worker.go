@@ -22,8 +22,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 
-	"github.com/vikukumar/pushpaka/internal/services"
 	backendConfig "github.com/vikukumar/pushpaka/internal/config"
+	"github.com/vikukumar/pushpaka/internal/services"
 	"github.com/vikukumar/pushpaka/pkg/basemodel"
 	"github.com/vikukumar/pushpaka/pkg/models"
 	"github.com/vikukumar/pushpaka/worker/internal/config"
@@ -3075,7 +3075,7 @@ func (w *BuildWorker) handleAITask(ctx context.Context, task *models.ProjectTask
 
 	// 2. Start AIAgent
 	agent := NewAIAgent(w, &project, job, w.aiSvc)
-	
+
 	// 3. Perform repair
 	err := agent.Repair(task.Error)
 	if err != nil {

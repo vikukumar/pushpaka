@@ -18,28 +18,28 @@ func NewToolboxRegistry() *ToolboxRegistry {
 // AllTools returns the full set of 500+ tool definitions for the AI Agent.
 func (r *ToolboxRegistry) AllTools() []models.AITool {
 	tools := []models.AITool{}
-	
+
 	// 1. Core Platform Tools (from ai_tools_service.go)
 	tools = append(tools, PlatformTools()...)
-	
+
 	// 2. Node.js & Frontend Tools (150+)
 	tools = append(tools, r.generateNodeTools()...)
-	
+
 	// 3. Python & AI Backend Tools (100+)
 	tools = append(tools, r.generatePythonTools()...)
-	
+
 	// 4. Go & Systems Tools (50+)
 	tools = append(tools, r.generateGoTools()...)
-	
+
 	// 5. Git & Version Control Tools (50+)
 	tools = append(tools, r.generateGitTools()...)
-	
+
 	// 6. Docker & Containerization Tools (50+)
 	tools = append(tools, r.generateDockerTools()...)
-	
+
 	// 7. Workspace & File System Tools (50+)
 	tools = append(tools, r.generateFileSystemTools()...)
-	
+
 	// 8. Specialized "Healer" Tools (50+)
 	tools = append(tools, r.generateHealerTools()...)
 
@@ -49,7 +49,7 @@ func (r *ToolboxRegistry) AllTools() []models.AITool {
 func (r *ToolboxRegistry) generateNodeTools() []models.AITool {
 	pms := []string{"npm", "yarn", "pnpm", "bun"}
 	actions := []string{"install", "build", "test", "audit", "outdated", "update", "prune", "dedupe", "ci"}
-	
+
 	var tools []models.AITool
 	for _, pm := range pms {
 		for _, action := range actions {
@@ -71,7 +71,7 @@ func (r *ToolboxRegistry) generateNodeTools() []models.AITool {
 			})
 		}
 	}
-	
+
 	// Add framework specific tools (Next.js, Vite, Nuxt, etc.)
 	frameworks := []string{"next", "vite", "nuxt", "astro", "remix", "nest", "strapi"}
 	for _, fw := range frameworks {
@@ -91,7 +91,7 @@ func (r *ToolboxRegistry) generateNodeTools() []models.AITool {
 			},
 		})
 	}
-	
+
 	return tools
 }
 

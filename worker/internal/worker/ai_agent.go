@@ -28,7 +28,7 @@ func NewAIAgent(w *BuildWorker, project *models.Project, job *models.DeploymentJ
 // Repair attempts to fix the current project's build/test/deploy failure.
 func (a *AIAgent) Repair(errorMsg string) error {
 	a.w.appendLog(a.job.DeploymentID, "info", "ai", "Autonomous AI repair agent starting...")
-	
+
 	// Initial message history
 	messages := []models.AIAgentMessage{
 		{
@@ -59,9 +59,9 @@ func (a *AIAgent) Repair(errorMsg string) error {
 		// 3. Execute requested tool calls
 		for _, tc := range resp.ToolCalls {
 			a.w.appendLog(a.job.DeploymentID, "info", "ai", fmt.Sprintf("AI requested tool: %s", tc.Function.Name))
-			
+
 			result := a.executeTool(tc)
-			
+
 			// 4. Add tool results to history
 			messages = append(messages, models.AIAgentMessage{
 				Role:       "tool",
@@ -77,7 +77,7 @@ func (a *AIAgent) Repair(errorMsg string) error {
 func (a *AIAgent) askAI(messages []models.AIAgentMessage, tools []models.AITool) (*models.AIAgentMessage, error) {
 	// Use the platform's AIService with tool calling enabled
 	executor := services.NewAIToolsExecutor(nil, nil, a.aiSvc) // We don't need services here as we execute locally
-	
+
 	// We call ChatWithTools in autonomous mode (but we handle execution loop ourselves for better logging)
 	resp, err := a.aiSvc.ChatWithTools(a.ctx, a.job.UserID, nil, nil, messages, executor, false)
 	if err != nil {
@@ -127,7 +127,7 @@ func (a *AIAgent) executeTool(tc models.AIToolCall) string {
 	if len(parts) >= 2 {
 		pm := parts[0]
 		action := parts[1]
-		
+
 		switch pm {
 		case "npm", "yarn", "pnpm", "bun":
 			cmdStr = fmt.Sprintf("%s %s", pm, action)
@@ -167,4 +167,3 @@ func (a *AIAgent) executeTool(tc models.AIToolCall) string {
 
 	return string(out)
 }
-
