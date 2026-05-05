@@ -1994,8 +1994,13 @@ func (w *BuildWorker) buildImage(ctx context.Context, job *models.DeploymentJob,
 		plain.Dir = sourceDir
 		plain.Stdout = &logWriter{deploymentID: job.DeploymentID, stream: "stdout", w: w}
 		plain.Stderr = &logWriter{deploymentID: job.DeploymentID, stream: "stderr", w: w}
-		return plain.Run()
+		_ = plain.Run()
 	}
+
+	// Cleanup dangling images after build
+	w.appendLog(job.DeploymentID, "info", "system", "Cleaning up dangling build layers...")
+	_ = exec.CommandContext(ctx, "docker", "image", "prune", "-f").Run()
+
 	return nil
 }
 
@@ -2069,6 +2074,12 @@ func (w *BuildWorker) deployContainer(ctx context.Context, job *models.Deploymen
 			legacyName := old.ProjectID[:8]
 			_ = exec.CommandContext(ctx, "docker", "stop", legacyName).Run()
 			_ = exec.CommandContext(ctx, "docker", "rm", legacyName).Run()
+
+			// Cleanup the old image to save space
+			if old.ImageTag != "" && old.ImageTag != job.ImageTag {
+				w.appendLog(job.DeploymentID, "info", "system", fmt.Sprintf("Removing old image: %s", old.ImageTag))
+				_ = exec.CommandContext(ctx, "docker", "rmi", old.ImageTag).Run()
+			}
 
 			w.db.Model(&models.Deployment{}).Where("id = ?", old.ID).Update("status", "stopped")
 		}

@@ -52,7 +52,21 @@ RUN make build VERSION=${VERSION}
 FROM alpine:3.21
 
 # Runtime dependencies
-RUN apk add --no-cache ca-certificates curl git docker-cli
+RUN apk add --no-cache \
+    ca-certificates \
+    curl \
+    git \
+    docker-cli \
+    nodejs \
+    npm \
+    go \
+    python3 \
+    py3-pip \
+    make \
+    g++
+
+# Install pnpm globally for workers
+RUN npm install -g pnpm@latest
 
 WORKDIR /app
 

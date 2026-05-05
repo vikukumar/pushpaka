@@ -227,21 +227,33 @@ export default function ProjectDetailPage() {
             <RefreshCw size={14} />
             Deployments
           </Link>
-          <Link href={`/dashboard/projects/${id}/env`} className="btn-secondary">
-            <Key size={14} />
-            Env Vars
-          </Link>
-          <Link href={`/dashboard/projects/${id}/domains`} className="btn-secondary">
-            <Globe size={14} />
-            Domains
-          </Link>
+          
+          <div className="relative group">
+            <button className="btn-secondary flex items-center gap-2">
+              <Settings size={14} />
+              Configure
+              <ChevronRight size={14} className="rotate-90" />
+            </button>
+            
+            <div className="absolute top-full left-0 mt-2 w-48 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-1 overflow-hidden backdrop-blur-xl">
+              <Link href={`/dashboard/projects/${id}/env`} className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 rounded-lg transition-colors">
+                <Key size={14} className="text-brand-400" />
+                Env Vars
+              </Link>
+              <Link href={`/dashboard/projects/${id}/domains`} className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 rounded-lg transition-colors">
+                <Globe size={14} className="text-brand-400" />
+                Domains
+              </Link>
+              <Link href={`/dashboard/projects/${id}/settings`} className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 rounded-lg transition-colors border-t border-white/5 mt-1 pt-3">
+                <Settings size={14} className="text-brand-400" />
+                Project Settings
+              </Link>
+            </div>
+          </div>
+
           <Link href={`/dashboard/projects/${id}/editor`} className="btn-secondary">
             <Code2 size={14} />
             Editor
-          </Link>
-          <Link href={`/dashboard/projects/${id}/settings`} className="btn-secondary ml-auto">
-            <Settings size={14} />
-            Settings
           </Link>
         </div>
 
