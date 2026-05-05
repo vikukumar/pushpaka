@@ -59,3 +59,6 @@ func (r *TaskRepository) Exists(projectID string, taskType models.TaskType, sha 
 		Count(&count)
 	return count > 0
 }
+func (r *TaskRepository) DeleteByProjectID(projectID string) error {
+	return r.db.Where("project_id = ?", projectID).Delete(&models.ProjectTask{}).Error
+}

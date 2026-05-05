@@ -147,3 +147,6 @@ func (r *DeploymentRepository) GetStats() (map[string]int64, error) {
 	}
 	return stats, nil
 }
+func (r *DeploymentRepository) DeleteByProjectID(projectID string) error {
+	return r.db.Where("project_id = ?", projectID).Delete(&models.Deployment{}).Error
+}

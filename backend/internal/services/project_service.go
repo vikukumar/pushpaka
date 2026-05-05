@@ -3,10 +3,15 @@ package services
 import (
 	"errors"
 	"fmt"
-	"time" // Added time import
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/vikukumar/pushpaka/internal/config"
 	"github.com/vikukumar/pushpaka/internal/repositories"
 	"github.com/vikukumar/pushpaka/pkg/basemodel"
 	"github.com/vikukumar/pushpaka/pkg/models"
@@ -19,13 +24,28 @@ type DeploymentSync interface {
 }
 
 type ProjectService struct {
+	cfg            *config.Config
 	projectRepo    *repositories.ProjectRepository
+	deploymentRepo *repositories.DeploymentRepository
+	taskRepo       *repositories.TaskRepository
 	deploymentSvc  DeploymentSync
 	taskDispatcher *TaskDispatcher
 }
 
-func NewProjectService(projectRepo *repositories.ProjectRepository, taskDispatcher *TaskDispatcher) *ProjectService {
-	return &ProjectService{projectRepo: projectRepo, taskDispatcher: taskDispatcher}
+func NewProjectService(
+	cfg *config.Config,
+	projectRepo *repositories.ProjectRepository,
+	deploymentRepo *repositories.DeploymentRepository,
+	taskRepo *repositories.TaskRepository,
+	taskDispatcher *TaskDispatcher,
+) *ProjectService {
+	return &ProjectService{
+		cfg:            cfg,
+		projectRepo:    projectRepo,
+		deploymentRepo: deploymentRepo,
+		taskRepo:       taskRepo,
+		taskDispatcher: taskDispatcher,
+	}
 }
 
 func (s *ProjectService) SetDeploymentService(svc DeploymentSync) {
@@ -170,5 +190,79 @@ func (s *ProjectService) Update(id, userID string, req *models.UpdateProjectRequ
 }
 
 func (s *ProjectService) Delete(id, userID string) error {
+	p, err := s.projectRepo.FindByID(id, userID)
+	if err != nil {
+		return ErrProjectNotFound
+	}
+
+	// 1. Cleanup Docker resources
+	s.cleanupDockerResources(p)
+
+	// 2. Cleanup Filesystem resources
+	s.cleanupFilesystemResources(p)
+
+	// 3. Cleanup Database records (Cascading)
+	// We manually delete deployments and tasks if they don't have FK constraints
+	_ = s.deploymentRepo.DeleteByProjectID(id)
+	_ = s.taskRepo.DeleteByProjectID(id)
+
 	return s.projectRepo.Delete(id, userID)
+}
+
+func (s *ProjectService) cleanupDockerResources(p *models.Project) {
+	// Find and remove all containers with the pushpaka_vahan prefix and project ID
+	prefix := "pushpaka_vahan_" + p.ID[:8]
+	
+	// Stop and remove containers
+	cmd := exec.Command("docker", "ps", "-a", "--filter", "name="+prefix, "--format", "{{.Names}}")
+	out, err := cmd.Output()
+	if err == nil {
+		names := strings.Split(string(out), "\n")
+		for _, name := range names {
+			name = strings.TrimSpace(name)
+			if name != "" {
+				_ = exec.Command("docker", "stop", name).Run()
+				_ = exec.Command("docker", "rm", "-f", name).Run()
+			}
+		}
+	}
+
+	// Remove project-related images
+	imagePrefix := "pushpaka_vahan/" + p.ID[:8]
+	cmdImg := exec.Command("docker", "images", "--filter", "reference="+imagePrefix+"*", "--format", "{{.ID}}")
+	outImg, errImg := cmdImg.Output()
+	if errImg == nil {
+		ids := strings.Split(string(outImg), "\n")
+		for _, id := range ids {
+			id = strings.TrimSpace(id)
+			if id != "" {
+				_ = exec.Command("docker", "rmi", "-f", id).Run()
+			}
+		}
+	}
+}
+
+func (s *ProjectService) cleanupFilesystemResources(p *models.Project) {
+	if s.cfg == nil {
+		return
+	}
+
+	// Paths to clean
+	// Note: these use the same logic as BuildWorker.getWorkspaceDir
+	uID := p.UserID[:8]
+	pID := p.ID[:8]
+
+	dirs := []string{
+		filepath.Join(s.cfg.ProjectsDir, uID, pID),
+		filepath.Join(s.cfg.BuildsDir, uID, pID),
+		filepath.Join(s.cfg.DeploysDir, uID, pID),
+		filepath.Join(s.cfg.TestsDir, uID, pID),
+		filepath.Join(s.cfg.CloneDir, ".buildcache", pID),
+	}
+
+	for _, dir := range dirs {
+		if dir != "" && dir != "/" { // safety check
+			_ = os.RemoveAll(dir)
+		}
+	}
 }
