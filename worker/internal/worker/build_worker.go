@@ -1448,7 +1448,7 @@ CMD ["%s"]
 		content = fmt.Sprintf(`FROM python:3.12-slim
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
 COPY . .
 EXPOSE %d
 CMD [%s]
@@ -2046,15 +2046,10 @@ func detectPythonEntry(sourceDir string, port int) string {
 }
 
 func (w *BuildWorker) buildImage(ctx context.Context, job *models.DeploymentJob, sourceDir string) error {
-	// Use a per-project named cache volume so repeated builds reuse node_modules,
-	// Go module cache, pip cache etc.  The cache volume is managed by Docker and
-	// persists between builds.
-	cacheMount := fmt.Sprintf("type=volume,source=pushpaka-cache-%s,target=/root/.cache", job.ProjectID[:8])
 	args := []string{
 		"build",
 		"--cache-from", fmt.Sprintf("type=local,src=%s", buildCacheDir(w.cfg.CloneDir, job.ProjectID)),
 		"--cache-to", fmt.Sprintf("type=local,dest=%s,mode=max", buildCacheDir(w.cfg.CloneDir, job.ProjectID)),
-		"--mount", cacheMount,
 		"-t", job.ImageTag,
 		"--force-rm",
 		".",
