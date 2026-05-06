@@ -6,10 +6,18 @@ import (
 	"github.com/vikukumar/pushpaka/pkg/basemodel"
 )
 
+type ProjectType string
+
+const (
+	ProjectTypeCD       ProjectType = "cd"
+	ProjectTypeRegistry ProjectType = "registry"
+)
+
 type Project struct {
 	basemodel.BaseModel
-	UserID       string `gorm:"index;type:varchar(255);not null" json:"user_id"`
-	Name         string `gorm:"type:varchar(255);not null" json:"name"`
+	UserID       string      `gorm:"index;type:varchar(255);not null" json:"user_id"`
+	Type         ProjectType `gorm:"type:varchar(20);default:'cd'" json:"type"`
+	Name         string      `gorm:"type:varchar(255);not null" json:"name"`
 	RepoURL      string `gorm:"type:varchar(255);not null" json:"repo_url"`
 	Branch       string `gorm:"type:varchar(100)" json:"branch"`
 	BuildCommand string `gorm:"type:text" json:"build_command"`
@@ -59,8 +67,9 @@ type Project struct {
 }
 
 type CreateProjectRequest struct {
-	Name             string `json:"name"            binding:"required,min=2,max=64"`
-	RepoURL          string `json:"repo_url"        binding:"required,url"`
+	Type             ProjectType `json:"type" gorm:"default:'cd'"`
+	Name             string      `json:"name"            binding:"required,min=2,max=64"`
+	RepoURL          string `json:"repo_url"        binding:"omitempty,url"`
 	Branch           string `json:"branch"`
 	InstallCommand   string `json:"install_command"`
 	BuildCommand     string `json:"build_command"`

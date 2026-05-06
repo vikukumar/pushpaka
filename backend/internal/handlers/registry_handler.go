@@ -5,21 +5,35 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/vikukumar/pushpaka/internal/repositories"
+	"github.com/vikukumar/pushpaka/internal/services"
 	"github.com/vikukumar/pushpaka/pkg/models"
 )
 
-type RegistryHandler struct {
-	repo *repositories.RegistryManagementRepository
+func NewRegistryHandler(repo *repositories.RegistryManagementRepository, projectSvc *services.ProjectService) *RegistryHandler {
+	return &RegistryHandler{repo: repo, projectSvc: projectSvc}
 }
 
-func NewRegistryHandler(repo *repositories.RegistryManagementRepository) *RegistryHandler {
-	return &RegistryHandler{repo: repo}
+type RegistryHandler struct {
+	repo       *repositories.RegistryManagementRepository
+	projectSvc *services.ProjectService
 }
 
 func (h *RegistryHandler) CreateRepo(c *gin.Context) {
+	userID := c.GetString("user_id") // Assuming middleware sets this
+	if userID == "" {
+		// Fallback if GetUserID not used
+		userID = c.Request.Header.Get("X-User-ID") 
+	}
+	
 	var repo models.RegistryRepo
 	if err := c.ShouldBindJSON(&repo); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Verify project ownership
+	if _, err := h.projectSvc.Get(repo.ProjectID, userID); err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied to project"})
 		return
 	}
 
@@ -48,7 +62,21 @@ func (h *RegistryHandler) ListRepos(c *gin.Context) {
 }
 
 func (h *RegistryHandler) DeleteRepo(c *gin.Context) {
+	userID := c.GetString("user_id")
 	id := c.Param("id")
+	
+	repo, err := h.repo.GetRepo(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "repo not found"})
+		return
+	}
+
+	// Verify project ownership
+	if _, err := h.projectSvc.Get(repo.ProjectID, userID); err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied to project"})
+		return
+	}
+
 	if err := h.repo.DeleteRepo(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

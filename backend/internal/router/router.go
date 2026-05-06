@@ -131,7 +131,7 @@ func New(
 	// Create AI Handler
 	aiHandler := handlers.NewAIHandler(aiSvc, logRepo, deploymentRepo, aiConfigRepo, cfg, aiExecutor)
 
-	registryHandler := handlers.NewRegistryHandler(reg.RegistryRepo)
+	registryHandler := handlers.NewRegistryHandler(reg.RegistryRepo, projectSvc)
 
 	workerHandler := handlers.NewWorkerHandler(workerSvc)
 	terminalHandler := handlers.NewTerminalHandler(deploymentRepo, cfg)

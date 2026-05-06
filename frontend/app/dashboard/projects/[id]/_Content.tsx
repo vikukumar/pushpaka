@@ -4,10 +4,12 @@ import { useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
-import { projectsApi, deploymentsApi, tasksApi } from '@/lib/api'
+import { projectsApi, deploymentsApi, tasksApi, registryApi } from '@/lib/api'
 import { Header } from '@/components/layout/Header'
 import { StatusBadge } from '@/components/dashboard/StatusBadge'
 import { TaskProgress } from '@/components/dashboard/TaskProgress'
+import { RegistryRepoList } from '@/components/dashboard/RegistryRepoList'
+import { RegistrySettings } from '@/components/dashboard/RegistrySettings'
 import { useConfirm } from '@/components/ui/Modal'
 import { timeAgo } from '@/lib/utils'
 import toast from 'react-hot-toast'
@@ -25,6 +27,7 @@ export default function ProjectDetailPage() {
   const id = pathname.split('/')[3] || ''
   const queryClient = useQueryClient()
   const [deployLoading, setDeployLoading] = useState(false)
+  const [registryTab, setRegistryTab] = useState<'repos' | 'settings'>('repos')
 
   const { data: projectData, isLoading } = useQuery({
     queryKey: ['project', id],
@@ -180,171 +183,195 @@ export default function ProjectDetailPage() {
       />
 
       <div className="p-4 md:p-6 space-y-6">
-        {/* Task Progress - NEW */}
-        <TaskProgress tasks={tasks} onRefresh={() => queryClient.invalidateQueries({ queryKey: ['tasks', id] })} />
-
-        {/* Actions row */}
-        <div className="flex items-center gap-3 flex-wrap">
-          {isPipelineComplete || (isPipelineFailed && hasBuildArtifact) ? (
-            <button
-              onClick={handleDeploy}
-              disabled={deployLoading}
-              className={`btn-primary ${isPipelineFailed ? 'bg-red-600 hover:bg-red-700' : ''}`}
-            >
-              {deployLoading ? (
-                <Loader2 size={15} className="animate-spin" />
-              ) : (
-                <Rocket size={15} />
-              )}
-              {isPipelineFailed ? 'Force Deploy' : 'Deploy Now'}
-            </button>
-          ) : isPipelineRunning ? (
-            <div className="flex items-center gap-2 px-4 py-2 bg-slate-800 rounded-lg text-slate-400 text-sm border border-slate-700">
-              <Loader2 size={15} className="animate-spin text-brand-400" />
-              Processing Pipeline...
-            </div>
-          ) : (
-            <button
-              onClick={handleSync}
-              className="btn-primary"
-            >
-              <RefreshCw size={14} />
-              {tasks.length === 0 ? 'Start Sync' : 'Re-sync'}
-            </button>
-          )}
-
-          {tasks.length > 0 && !isPipelineRunning && (
-             <button
-             onClick={handleSync}
-             className="btn-secondary"
-           >
-             <RefreshCw size={14} />
-             Sync
-           </button>
-          )}
-
-          <Link href={`/dashboard/projects/${id}/deployments`} className="btn-secondary">
-            <RefreshCw size={14} />
-            Deployments
-          </Link>
-          
-          <div className="relative group">
-            <button className="btn-secondary flex items-center gap-2">
-              <Settings size={14} />
-              Configure
-              <ChevronRight size={14} className="rotate-90" />
-            </button>
-            
-            <div className="absolute top-full left-0 mt-2 w-48 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-1 overflow-hidden backdrop-blur-xl">
-              <Link href={`/dashboard/projects/${id}/env`} className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 rounded-lg transition-colors">
-                <Key size={14} className="text-brand-400" />
-                Env Vars
-              </Link>
-              <Link href={`/dashboard/projects/${id}/domains`} className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 rounded-lg transition-colors">
-                <Globe size={14} className="text-brand-400" />
-                Domains
-              </Link>
-              <Link href={`/dashboard/projects/${id}/settings`} className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 rounded-lg transition-colors border-t border-white/5 mt-1 pt-3">
-                <Settings size={14} className="text-brand-400" />
-                Project Settings
-              </Link>
-            </div>
-          </div>
-
-          <Link href={`/dashboard/projects/${id}/editor`} className="btn-secondary">
-            <Code2 size={14} />
-            Editor
-          </Link>
-        </div>
-
-        {/* Project info */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="card">
-            <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">
-              Project Details
-            </h3>
-            <dl className="space-y-3">
-              {[
-                { label: 'Repository', value: project.repo_url, mono: true },
-                { label: 'Branch', value: project.branch },
-                { label: 'Latest Commit', value: project.latest_commit_sha ? `${project.latest_commit_sha.slice(0, 7)}: ${project.latest_commit_msg}` : 'Checking remote...', mono: true },
-                { label: 'Last Synced', value: project.latest_commit_at ? timeAgo(project.latest_commit_at) : 'Never' },
-                { label: 'Framework', value: project.framework || 'Auto-detect' },
-                { label: 'Port', value: project.port?.toString() || '3000' },
-                { label: 'Build Command', value: project.build_command || '', mono: true },
-                { label: 'Start Command', value: project.start_command || '', mono: true },
-              ].map(({ label, value, mono }) => (
-                <div key={label} className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-3 py-1.5 border-b border-white/[0.03] last:border-0">
-                  <dt className="text-slate-500 text-xs w-full sm:w-36 shrink-0">{label}</dt>
-                  <dd className={`text-sm text-slate-200 break-all flex-1 ${mono ? 'font-mono' : ''}`}>{value}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-
-          {/* Latest deployments */}
-          <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
-                Recent Deployments
-              </h3>
-              <Link
-                href={`/dashboard/projects/${id}/deployments`}
-                className="text-xs text-slate-500 hover:text-brand-400 flex items-center gap-1"
+        {project.type === 'registry' ? (
+          <>
+            <div className="flex gap-1 p-1 bg-slate-900 border border-slate-800 rounded-xl w-fit">
+              <button 
+                onClick={() => setRegistryTab('repos')}
+                className={`px-4 py-2 text-xs font-medium rounded-lg transition-all ${
+                  registryTab === 'repos' ? 'bg-brand-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'
+                }`}
               >
-                View all <ChevronRight size={12} />
+                Repositories
+              </button>
+              <button 
+                onClick={() => setRegistryTab('settings')}
+                className={`px-4 py-2 text-xs font-medium rounded-lg transition-all ${
+                  registryTab === 'settings' ? 'bg-brand-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Instructions
+              </button>
+            </div>
+
+            {registryTab === 'repos' ? (
+              <RegistryRepoList projectId={id} />
+            ) : (
+              <RegistrySettings projectId={id} />
+            )}
+          </>
+        ) : (
+          <>
+            {/* Task Progress - NEW */}
+            <TaskProgress tasks={tasks} onRefresh={() => queryClient.invalidateQueries({ queryKey: ['tasks', id] })} />
+
+            {/* Actions row */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {isPipelineComplete || (isPipelineFailed && hasBuildArtifact) ? (
+                <button
+                  onClick={handleDeploy}
+                  disabled={deployLoading}
+                  className={`btn-primary ${isPipelineFailed ? 'bg-red-600 hover:bg-red-700' : ''}`}
+                >
+                  {deployLoading ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : (
+                    <Rocket size={15} />
+                  )}
+                  {isPipelineFailed ? 'Force Deploy' : 'Deploy Now'}
+                </button>
+              ) : isPipelineRunning ? (
+                <div className="flex items-center gap-2 px-4 py-2 bg-slate-800 rounded-lg text-slate-400 text-sm border border-slate-700">
+                  <Loader2 size={15} className="animate-spin text-brand-400" />
+                  Processing Pipeline...
+                </div>
+              ) : (
+                <button
+                  onClick={handleSync}
+                  className="btn-primary"
+                >
+                  <RefreshCw size={14} />
+                  {tasks.length === 0 ? 'Start Sync' : 'Re-sync'}
+                </button>
+              )}
+
+              {tasks.length > 0 && !isPipelineRunning && (
+                <button
+                  onClick={handleSync}
+                  className="btn-secondary"
+                >
+                  <RefreshCw size={14} />
+                  Sync
+                </button>
+              )}
+
+              <Link href={`/dashboard/projects/${id}/deployments`} className="btn-secondary">
+                <RefreshCw size={14} />
+                Deployments
+              </Link>
+              
+              <div className="relative group">
+                <button className="btn-secondary flex items-center gap-2">
+                  <Settings size={14} />
+                  Configure
+                  <ChevronRight size={14} className="rotate-90" />
+                </button>
+                
+                <div className="absolute top-full left-0 mt-2 w-48 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-1 overflow-hidden backdrop-blur-xl">
+                  <Link href={`/dashboard/projects/${id}/env`} className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 rounded-lg transition-colors">
+                    <Key size={14} className="text-brand-400" />
+                    Env Vars
+                  </Link>
+                  <Link href={`/dashboard/projects/${id}/domains`} className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 rounded-lg transition-colors">
+                    <Globe size={14} className="text-brand-400" />
+                    Domains
+                  </Link>
+                  <Link href={`/dashboard/projects/${id}/settings`} className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 rounded-lg transition-colors border-t border-white/5 mt-1 pt-3">
+                    <Settings size={14} className="text-brand-400" />
+                    Project Settings
+                  </Link>
+                </div>
+              </div>
+
+              <Link href={`/dashboard/projects/${id}/editor`} className="btn-secondary">
+                <Code2 size={14} />
+                Editor
               </Link>
             </div>
 
-            {deployments.length === 0 ? (
-              <div className="text-center py-8">
-                <Rocket size={28} className="mx-auto text-slate-700 mb-2" />
-                <p className="text-slate-500 text-sm">No deployments yet</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {deployments.map((d: {
-                  id: string
-                  status: 'queued' | 'building' | 'running' | 'failed' | 'stopped'
-                  branch: string
-                  commit_sha: string
-                  url: string
-                  created_at: string
-                }) => (
-                  <Link
-                    key={d.id}
-                    href={`/dashboard/deployments/${d.id}`}
-                    className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-800 transition-colors"
-                  >
-                    <StatusBadge status={d.status} />
-                    <div className="flex-1 min-w-0 text-xs">
-                      <div className="text-slate-300 flex items-center gap-1.5">
-                        <GitBranch size={10} /> {d.branch}
-                        {d.commit_sha && (
-                          <>
-                            <GitCommit size={10} /> {d.commit_sha.slice(0, 7)}
-                          </>
-                        )}
-                      </div>
-                      <div className="text-slate-600">{timeAgo(d.created_at)}</div>
+            {/* Project info */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="card">
+                <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">
+                  Project Details
+                </h3>
+                <dl className="space-y-3">
+                  {[
+                    { label: 'Repository', value: project.repo_url, mono: true },
+                    { label: 'Branch', value: project.branch },
+                    { label: 'Latest Commit', value: project.latest_commit_sha ? `${project.latest_commit_sha.slice(0, 7)}: ${project.latest_commit_msg}` : 'Checking remote...', mono: true },
+                    { label: 'Last Synced', value: project.latest_commit_at ? timeAgo(project.latest_commit_at) : 'Never' },
+                    { label: 'Framework', value: project.framework || 'Auto-detect' },
+                    { label: 'Port', value: project.port?.toString() || '3000' },
+                    { label: 'Build Command', value: project.build_command || '', mono: true },
+                    { label: 'Start Command', value: project.start_command || '', mono: true },
+                  ].map(({ label, value, mono }) => (
+                    <div key={label} className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-3 py-1.5 border-b border-white/[0.03] last:border-0">
+                      <dt className="text-slate-500 text-xs w-full sm:w-36 shrink-0">{label}</dt>
+                      <dd className={`text-sm text-slate-200 break-all flex-1 ${mono ? 'font-mono' : ''}`}>{value}</dd>
                     </div>
-                    {d.url && (
-                      <a
-                        href={d.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-slate-600 hover:text-brand-400"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <ExternalLink size={12} />
-                      </a>
-                    )}
-                  </Link>
-                ))}
+                  ))}
+                </dl>
               </div>
-            )}
-          </div>
-        </div>
+
+              {/* Latest deployments */}
+              <div className="card">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+                    Recent Deployments
+                  </h3>
+                  <Link
+                    href={`/dashboard/projects/${id}/deployments`}
+                    className="text-xs text-slate-500 hover:text-brand-400 flex items-center gap-1"
+                  >
+                    View all <ChevronRight size={12} />
+                  </Link>
+                </div>
+
+                {deployments.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Rocket size={28} className="mx-auto text-slate-700 mb-2" />
+                    <p className="text-slate-500 text-sm">No deployments yet</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {deployments.map((d: any) => (
+                      <Link
+                        key={d.id}
+                        href={`/dashboard/deployments/${d.id}`}
+                        className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-800 transition-colors"
+                      >
+                        <StatusBadge status={d.status} />
+                        <div className="flex-1 min-w-0 text-xs">
+                          <div className="text-slate-300 flex items-center gap-1.5">
+                            <GitBranch size={10} /> {d.branch}
+                            {d.commit_sha && (
+                              <>
+                                <GitCommit size={10} /> {d.commit_sha.slice(0, 7)}
+                              </>
+                            )}
+                          </div>
+                          <div className="text-slate-600">{timeAgo(d.created_at)}</div>
+                        </div>
+                        {d.url && (
+                          <a
+                            href={d.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-slate-600 hover:text-brand-400"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <ExternalLink size={12} />
+                          </a>
+                        )}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
       {ConfirmModal}
     </div>

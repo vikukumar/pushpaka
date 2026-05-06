@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vikukumar/pushpaka/internal/config"
+	"github.com/vikukumar/pushpaka/pkg/models"
 )
 
 type RegistryService struct {
@@ -45,7 +46,36 @@ func (s *RegistryService) HandleOCI(w http.ResponseWriter, r *http.Request) {
 	projectID := parts[0]
 	repoName := parts[1]
 
-	// TODO: Auth check with projectSvc
+	// 1. Verify project exists and is a Registry project
+	project, err := s.projectSvc.GetInternal(projectID)
+	if err != nil {
+		http.Error(w, "Project not found", http.StatusNotFound)
+		return
+	}
+	if project.Type != models.ProjectTypeRegistry {
+		http.Error(w, "Project is not a registry project", http.StatusBadRequest)
+		return
+	}
+
+	// 2. Auth check
+	// Standard Docker clients use Basic Auth.
+	// For now, we'll allow public reads if we implemented that logic, 
+	// but for writes we MUST auth.
+	user, password, hasAuth := r.BasicAuth()
+	if !hasAuth && r.Method != http.MethodGet {
+		w.Header().Set("WWW-Authenticate", `Basic realm="Pushpaka Registry"`)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	if hasAuth {
+		// Verify credentials and project ownership
+		if !s.verifyAccess(user, password, project) {
+			w.Header().Set("WWW-Authenticate", `Basic realm="Pushpaka Registry"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+	}
 
 	subPath := strings.Join(parts[2:], "/")
 
@@ -174,4 +204,29 @@ func (s *RegistryService) HandleBinary(w http.ResponseWriter, r *http.Request) {
 		io.Copy(f, r.Body)
 		w.WriteHeader(http.StatusCreated)
 	}
+}
+
+func (s *RegistryService) verifyAccess(username, password string, project *models.Project) bool {
+	// 1. Try email/password
+	authSvc := s.projectSvc.GetAuthService()
+	if authSvc == nil {
+		return false
+	}
+
+	loginResp, err := authSvc.Login(&models.LoginRequest{
+		Email:    username,
+		Password: password,
+	})
+
+	if err == nil && loginResp != nil {
+		// User authenticated, check if they own the project or are admin
+		if loginResp.User.ID == project.UserID || loginResp.User.Role == "admin" {
+			return true
+		}
+	}
+
+	// 2. Fallback to API Key / Token
+	// (Implementation depends on if we want to support long-lived tokens for registry)
+	
+	return false
 }

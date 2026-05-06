@@ -30,6 +30,7 @@ type ProjectService struct {
 	taskRepo       *repositories.TaskRepository
 	deploymentSvc  DeploymentSync
 	taskDispatcher *TaskDispatcher
+	authSvc        *AuthService
 }
 
 func NewProjectService(
@@ -46,6 +47,14 @@ func NewProjectService(
 		taskRepo:       taskRepo,
 		taskDispatcher: taskDispatcher,
 	}
+}
+
+func (s *ProjectService) SetAuthService(svc *AuthService) {
+	s.authSvc = svc
+}
+
+func (s *ProjectService) GetAuthService() *AuthService {
+	return s.authSvc
 }
 
 func (s *ProjectService) SetDeploymentService(svc DeploymentSync) {
@@ -96,6 +105,7 @@ func (s *ProjectService) Create(userID string, req *models.CreateProjectRequest)
 		Port:             port,
 		Framework:        req.Framework,
 		Status:           "inactive",
+		Type:             req.Type,
 		IsPrivate:        req.IsPrivate,
 		GitToken:         req.GitToken,
 		CPULimit:         req.CPULimit,
@@ -112,6 +122,11 @@ func (s *ProjectService) Create(userID string, req *models.CreateProjectRequest)
 	}
 
 	// Trigger initial sync task instead of direct goroutine sync
+	// Registry projects don't need sync if they don't have a RepoURL
+	if p.Type == models.ProjectTypeRegistry && p.RepoURL == "" {
+		return p, nil
+	}
+
 	if s.taskDispatcher != nil {
 		s.taskDispatcher.CreateTask(p.ID, models.TaskTypeSync, "")
 	} else if s.deploymentSvc != nil {
@@ -131,6 +146,10 @@ func (s *ProjectService) Get(id, userID string) (*models.Project, error) {
 		return nil, ErrProjectNotFound
 	}
 	return p, nil
+}
+
+func (s *ProjectService) GetInternal(id string) (*models.Project, error) {
+	return s.projectRepo.FindByIDInternal(id)
 }
 
 func (s *ProjectService) Update(id, userID string, req *models.UpdateProjectRequest) (*models.Project, error) {

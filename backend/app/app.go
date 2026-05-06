@@ -135,6 +135,7 @@ func RunWithOptions(ctx context.Context, opts RunOptions) error {
 	projectSvc := services.NewProjectService(cfg, projectRepo, deploymentRepo, taskRepo, taskDispatcher)
 	deploymentSvc := services.NewDeploymentService(deploymentRepo, projectRepo, envRepo, domainRepo, rdb, opts.InProcessQueue, taskDispatcher, cfg.BaseURL)
 	projectSvc.SetDeploymentService(deploymentSvc)
+	projectSvc.SetAuthService(authSvc)
 	logSvc := services.NewLogService(logRepo)
 	domainSvc := services.NewDomainService(domainRepo, projectRepo)
 	envSvc := services.NewEnvService(envRepo, projectRepo)

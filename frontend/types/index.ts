@@ -29,6 +29,7 @@ export interface UsersListResponse {
 export interface Project {
   id: string
   user_id: string
+  type: 'cd' | 'registry'
   name: string
   repo_url: string
   branch: string
@@ -213,5 +214,31 @@ export interface ProjectTask {
   worker_id?: string
   started_at: string | null
   finished_at: string | null
+  created_at: string
+}
+
+export type RegistryType = 'docker' | 'helm' | 'binary'
+
+export interface RegistryRepo {
+  id: string
+  project_id: string
+  name: string
+  type: RegistryType
+  description: string
+  is_public: boolean
+  artifact_count: number
+  download_count: number
+  created_at: string
+}
+
+export interface RegistryArtifact {
+  id: string
+  repo_id: string
+  tag: string
+  digest: string
+  size: number
+  mime_type: string
+  metadata: string
+  downloads: number
   created_at: string
 }

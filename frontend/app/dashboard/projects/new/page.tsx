@@ -6,7 +6,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { projectsApi } from '@/lib/api'
 import { Header } from '@/components/layout/Header'
 import toast from 'react-hot-toast'
-import { Loader2, GitBranch, Terminal, Globe, Lock, Eye, EyeOff, Zap } from 'lucide-react'
+import { Loader2, GitBranch, Terminal, Globe, Lock, Eye, EyeOff, Zap, Rocket, Database } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
 
 const FRAMEWORKS = [
@@ -175,6 +175,7 @@ export default function NewProjectPage() {
   const [activeTab, setActiveTab] = useState<'template' | 'manual'>('template')
   const [form, setForm] = useState({
     name: '',
+    type: 'cd' as 'cd' | 'registry',
     repo_url: '',
     branch: 'main',
     build_command: '',
@@ -283,11 +284,50 @@ export default function NewProjectPage() {
               />
             </div>
 
-            {/* Repository URL */}
+            {/* Project Type */}
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, type: 'cd' })}
+                className={`flex flex-col items-center gap-3 p-4 rounded-xl border transition-all ${
+                  form.type === 'cd' 
+                    ? 'bg-brand-500/10 border-brand-500 ring-1 ring-brand-500' 
+                    : 'bg-slate-900/50 border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                <div className={`p-2 rounded-lg ${form.type === 'cd' ? 'bg-brand-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                  <Rocket size={20} />
+                </div>
+                <div className="text-center">
+                  <div className={`text-sm font-semibold ${form.type === 'cd' ? 'text-white' : 'text-slate-300'}`}>CD Project</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Build & Deploy Apps</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, type: 'registry' })}
+                className={`flex flex-col items-center gap-3 p-4 rounded-xl border transition-all ${
+                  form.type === 'registry' 
+                    ? 'bg-brand-500/10 border-brand-500 ring-1 ring-brand-500' 
+                    : 'bg-slate-900/50 border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                <div className={`p-2 rounded-lg ${form.type === 'registry' ? 'bg-brand-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                  <Database size={20} />
+                </div>
+                <div className="text-center">
+                  <div className={`text-sm font-semibold ${form.type === 'registry' ? 'text-white' : 'text-slate-300'}`}>Registry</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Store Images & Charts</div>
+                </div>
+              </button>
+            </div>
+
+            {/* Repository URL (Optional for Registry) */}
             <div>
               <label className="label">
                 <Globe size={13} className="inline mr-1.5" />
-                Git Repository URL
+                Git Repository URL {form.type === 'registry' && <span className="text-slate-600 font-normal ml-1">(Optional)</span>}
               </label>
               <input
                 type="url"
@@ -295,7 +335,7 @@ export default function NewProjectPage() {
                 placeholder="https://github.com/user/repo"
                 value={form.repo_url}
                 onChange={(e) => setForm({ ...form, repo_url: e.target.value })}
-                required
+                required={form.type === 'cd'}
               />
             </div>
 
@@ -346,72 +386,77 @@ export default function NewProjectPage() {
               </div>
             )}
 
-            {/* Branch */}
-            <div>
-              <label className="label">
-                <GitBranch size={13} className="inline mr-1.5" />
-                Branch
-              </label>
-              <input
-                type="text"
-                className="input"
-                placeholder="main"
-                value={form.branch}
-                onChange={(e) => setForm({ ...form, branch: e.target.value })}
-              />
-            </div>
+            {/* Advanced fields (Hidden for simple Registry) */}
+            {form.type === 'cd' && (
+              <>
+                {/* Branch */}
+                <div>
+                  <label className="label">
+                    <GitBranch size={13} className="inline mr-1.5" />
+                    Branch
+                  </label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="main"
+                    value={form.branch}
+                    onChange={(e) => setForm({ ...form, branch: e.target.value })}
+                  />
+                </div>
 
-            {/* Framework */}
-            <div>
-              <label className="label">Framework / Runtime</label>
-              <Select
-                value={form.framework}
-                onChange={(v) => setForm({ ...form, framework: v })}
-                options={FRAMEWORKS}
-                placeholder="Auto-detect"
-              />
-            </div>
+                {/* Framework */}
+                <div>
+                  <label className="label">Framework / Runtime</label>
+                  <Select
+                    value={form.framework}
+                    onChange={(v) => setForm({ ...form, framework: v })}
+                    options={FRAMEWORKS}
+                    placeholder="Auto-detect"
+                  />
+                </div>
 
-            {/* Build & Start commands */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="label">
-                  <Terminal size={13} className="inline mr-1.5" />
-                  Build Command
-                </label>
-                <input
-                  type="text"
-                  className="input"
-                  placeholder="npm run build"
-                  value={form.build_command}
-                  onChange={(e) => setForm({ ...form, build_command: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="label">Start Command</label>
-                <input
-                  type="text"
-                  className="input"
-                  placeholder="npm start"
-                  value={form.start_command}
-                  onChange={(e) => setForm({ ...form, start_command: e.target.value })}
-                />
-              </div>
-            </div>
+                {/* Build & Start commands */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="label">
+                      <Terminal size={13} className="inline mr-1.5" />
+                      Build Command
+                    </label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="npm run build"
+                      value={form.build_command}
+                      onChange={(e) => setForm({ ...form, build_command: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Start Command</label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="npm start"
+                      value={form.start_command}
+                      onChange={(e) => setForm({ ...form, start_command: e.target.value })}
+                    />
+                  </div>
+                </div>
 
-            {/* Port */}
-            <div>
-              <label className="label">Port</label>
-              <input
-                type="number"
-                className="input"
-                placeholder="3000"
-                value={form.port}
-                onChange={(e) => setForm({ ...form, port: parseInt(e.target.value) || 3000 })}
-                min={1}
-                max={65535}
-              />
-            </div>
+                {/* Port */}
+                <div>
+                  <label className="label">Port</label>
+                  <input
+                    type="number"
+                    className="input"
+                    placeholder="3000"
+                    value={form.port}
+                    onChange={(e) => setForm({ ...form, port: parseInt(e.target.value) || 3000 })}
+                    min={1}
+                    max={65535}
+                  />
+                </div>
+              </>
+            )}
 
             <div className="flex gap-3 pt-2">
               <button
