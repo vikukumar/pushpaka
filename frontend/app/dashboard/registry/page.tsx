@@ -33,14 +33,20 @@ export default function RegistryPage() {
   const [newRepoPublic, setNewRepoPublic] = useState(false);
 
   // Fetch Projects
-  const { data: projectsData } = useQuery({
+  const { data: projectsData, isLoading: projectsLoading } = useQuery({
     queryKey: ['projects'],
     queryFn: () => projectsApi.list().then(r => r.data.data),
+    select: (data: any[]) => data.filter(p => p.type === 'registry'),
   });
 
   useEffect(() => {
-    if (projectsData?.length > 0 && !selectedProjectId) {
-      setSelectedProjectId(projectsData[0].id);
+    if (projectsData?.length > 0) {
+      // If current selected project is not in registry list, select the first one
+      if (!selectedProjectId || !projectsData.find((p: any) => p.id === selectedProjectId)) {
+        setSelectedProjectId(projectsData[0].id);
+      }
+    } else {
+      setSelectedProjectId('');
     }
   }, [projectsData, selectedProjectId]);
 
@@ -103,18 +109,31 @@ export default function RegistryPage() {
         </div>
         
         <div className="flex items-center gap-3">
-          <select 
-            className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/50 outline-none"
-            value={selectedProjectId}
-            onChange={(e) => setSelectedProjectId(e.target.value)}
-          >
-            {projectsData?.map((p: any) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <select 
+              className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/50 outline-none min-w-[150px]"
+              value={selectedProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
+              disabled={!projectsData || projectsData.length === 0}
+            >
+              {projectsData?.length === 0 && <option value="">No Registry Projects</option>}
+              {projectsData?.map((p: any) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <button 
+              onClick={() => window.location.href = '/dashboard/projects/new?type=registry'}
+              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-all"
+              title="Create New Registry Project"
+            >
+              <Plus size={18} />
+            </button>
+          </div>
+          
           <button 
+            disabled={!selectedProjectId}
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 transition-all rounded-lg font-medium shadow-lg shadow-blue-500/20"
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all rounded-lg font-medium shadow-lg shadow-blue-500/20"
           >
             <Plus size={18} />
             Create {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Repo

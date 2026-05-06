@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { projectsApi } from '@/lib/api'
 import { Header } from '@/components/layout/Header'
@@ -186,6 +186,15 @@ export default function NewProjectPage() {
     git_token: '',
   })
 
+  const searchParams = useSearchParams()
+  const queryType = searchParams.get('type')
+
+  useState(() => {
+    if (queryType === 'registry' || queryType === 'cd') {
+      setForm(f => ({ ...f, type: queryType }))
+    }
+  })
+
   const applyTemplate = (t: Template) => {
     setForm((f) => ({
       ...f,
@@ -207,7 +216,7 @@ export default function NewProjectPage() {
       await projectsApi.create(form)
       toast.success('Project created!')
       queryClient.invalidateQueries({ queryKey: ['projects'] })
-      router.push('/dashboard/projects')
+      router.push(form.type === 'registry' ? '/dashboard/registry' : '/dashboard/projects')
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: string } } }
       toast.error(error?.response?.data?.error || 'Failed to create project')
