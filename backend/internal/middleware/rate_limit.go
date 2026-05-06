@@ -20,7 +20,7 @@ func RateLimit(key string) gin.HandlerFunc {
 		lastSeen, exists := clients[ip]
 		now := time.Now()
 
-		if exists && now.Sub(lastSeen) < 500*time.Millisecond {
+		if exists && now.Sub(lastSeen) < 100*time.Millisecond {
 			mu.Unlock()
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 				"error": "too many requests",

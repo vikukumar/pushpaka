@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/vikukumar/pushpaka/pkg/basemodel"
@@ -31,7 +32,10 @@ func (r *RegistryManagementRepository) ListReposByProject(projectID string) ([]m
 	basemodel.EnsureSynced[models.RegistryRepo](r.db)
 	var repos []models.RegistryRepo
 	err := r.db.Where("project_id = ?", projectID).Find(&repos).Error
-	return repos, err
+	if err != nil {
+		return nil, fmt.Errorf("failed to list repos: %w", err)
+	}
+	return repos, nil
 }
 
 func (r *RegistryManagementRepository) CreateArtifact(art *models.RegistryArtifact) error {

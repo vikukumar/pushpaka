@@ -229,8 +229,8 @@ func (s *ProjectService) Delete(id, userID string) error {
 }
 
 func (s *ProjectService) cleanupDockerResources(p *models.Project) {
-	// Find and remove all containers with the pushpaka_vahan prefix and project ID
-	prefix := "pushpaka_vahan_" + p.ID[:8]
+	// Find and remove all containers with the pushpaka prefix and project ID
+	prefix := "pushpaka_" + p.ID[:8]
 
 	// Stop and remove containers
 	cmd := exec.Command("docker", "ps", "-a", "--filter", "name="+prefix, "--format", "{{.Names}}")
@@ -247,7 +247,7 @@ func (s *ProjectService) cleanupDockerResources(p *models.Project) {
 	}
 
 	// Remove project-related images
-	imagePrefix := "pushpaka_vahan/" + p.ID[:8]
+	imagePrefix := "pushpaka/" + p.ID[:8]
 	cmdImg := exec.Command("docker", "images", "--filter", "reference="+imagePrefix+"*", "--format", "{{.ID}}")
 	outImg, errImg := cmdImg.Output()
 	if errImg == nil {

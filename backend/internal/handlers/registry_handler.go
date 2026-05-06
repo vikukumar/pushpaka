@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/vikukumar/pushpaka/internal/middleware"
 	"github.com/vikukumar/pushpaka/internal/repositories"
 	"github.com/vikukumar/pushpaka/internal/services"
 	"github.com/vikukumar/pushpaka/pkg/models"
@@ -19,10 +21,10 @@ type RegistryHandler struct {
 }
 
 func (h *RegistryHandler) CreateRepo(c *gin.Context) {
-	userID := c.GetString("user_id") // Assuming middleware sets this
+	userID := middleware.GetUserID(c)
 	if userID == "" {
-		// Fallback if GetUserID not used
-		userID = c.Request.Header.Get("X-User-ID")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
 	}
 
 	var repo models.RegistryRepo
@@ -36,6 +38,12 @@ func (h *RegistryHandler) CreateRepo(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "access denied to project"})
 		return
 	}
+
+	// Initialize ID and timestamps
+	now := models.NowUTC()
+	repo.ID = uuid.New().String()
+	repo.CreatedAt = now.Time
+	repo.UpdatedAt = now.Time
 
 	if err := h.repo.CreateRepo(&repo); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -54,7 +62,9 @@ func (h *RegistryHandler) ListRepos(c *gin.Context) {
 
 	repos, err := h.repo.ListReposByProject(projectID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// Log the actual error to help debugging
+		c.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error: " + err.Error()})
 		return
 	}
 
@@ -62,7 +72,7 @@ func (h *RegistryHandler) ListRepos(c *gin.Context) {
 }
 
 func (h *RegistryHandler) DeleteRepo(c *gin.Context) {
-	userID := c.GetString("user_id")
+	userID := middleware.GetUserID(c)
 	id := c.Param("id")
 
 	repo, err := h.repo.GetRepo(id)
@@ -100,6 +110,12 @@ func (h *RegistryHandler) CreateReplication(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Initialize ID and timestamps
+	now := models.NowUTC()
+	rep.ID = uuid.New().String()
+	rep.CreatedAt = now.Time
+	rep.UpdatedAt = now.Time
 
 	if err := h.repo.CreateReplication(&rep); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

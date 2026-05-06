@@ -1706,7 +1706,7 @@ func pmInstallArgs(pm string) []string {
 	case "pnpm":
 		return []string{"install", "--frozen-lockfile"}
 	case "yarn":
-		return []string{"install", "--frozen-lockfile"}
+		return []string{"install", "--immutable"}
 	case "bun":
 		return []string{"install"}
 	default: // npm
@@ -1732,7 +1732,7 @@ func pmProdInstall(pm string) string {
 	case "pnpm":
 		return "pnpm install --prod --frozen-lockfile || pnpm install --prod"
 	case "yarn":
-		return "yarn install --production --frozen-lockfile || yarn install --production"
+		return "yarn install --immutable"
 	case "bun":
 		return "bun install --production"
 	default:
@@ -2056,7 +2056,7 @@ func (w *BuildWorker) buildImage(ctx context.Context, job *models.DeploymentJob,
 		"--cache-to", fmt.Sprintf("type=local,dest=%s,mode=max", buildCacheDir(w.cfg.CloneDir, job.ProjectID)),
 		"--mount", cacheMount,
 		"-t", job.ImageTag,
-		"--rm",
+		"--force-rm",
 		".",
 	}
 	// Fallback: if BuildKit is not available, use plain docker build without cache flags
@@ -2081,7 +2081,7 @@ func (w *BuildWorker) buildImage(ctx context.Context, job *models.DeploymentJob,
 			_ = os.WriteFile(dockerfilePath, []byte(newContent), 0644)
 		}
 
-		plainArgs := []string{"build", "--rm", "-t", job.ImageTag, "."}
+		plainArgs := []string{"build", "--force-rm", "-t", job.ImageTag, "."}
 		plain := exec.CommandContext(ctx, "docker", plainArgs...)
 		plain.Dir = sourceDir
 		plain.Stdout = &logWriter{deploymentID: job.DeploymentID, stream: "stdout", w: w}
@@ -2107,7 +2107,7 @@ func buildCacheDir(cloneDir, projectID string) string {
 func (w *BuildWorker) deployContainer(ctx context.Context, job *models.DeploymentJob) (string, string, error) {
 	// For zero-downtime, we don't kill the old container yet.
 	// We use a unique name for the new container.
-	containerName := fmt.Sprintf("pushpaka_vahan_%s_%s", job.ProjectID[:8], job.DeploymentID[:8])
+	containerName := fmt.Sprintf("pushpaka_%s_%s", job.ProjectID[:8], job.DeploymentID[:8])
 	w.appendLog(job.DeploymentID, "info", "system", fmt.Sprintf("Starting new container: %s", containerName))
 
 	// Build docker run arguments
@@ -2121,6 +2121,7 @@ func (w *BuildWorker) deployContainer(ctx context.Context, job *models.Deploymen
 		"--label", "traefik.enable=true",
 		"--label", fmt.Sprintf("traefik.http.routers.%s.rule=PathPrefix(`/p/%s`)", containerName, job.ProjectID[:8]),
 		"--label", fmt.Sprintf("traefik.http.services.%s.loadbalancer.server.port=%d", containerName, job.Port),
+		"--label", "pushpaka=true",
 	}
 
 	// Resource limits
@@ -2161,7 +2162,7 @@ func (w *BuildWorker) deployContainer(ctx context.Context, job *models.Deploymen
 			w.appendLog(job.DeploymentID, "info", "system", fmt.Sprintf("Stopping old deployment: %s", old.ID))
 
 			// Try the new naming scheme
-			newOldContainerName := fmt.Sprintf("pushpaka_vahan_%s_%s", old.ProjectID[:8], old.ID[:8])
+			newOldContainerName := fmt.Sprintf("pushpaka_%s_%s", old.ProjectID[:8], old.ID[:8])
 			_ = exec.CommandContext(ctx, "docker", "stop", newOldContainerName).Run()
 			_ = exec.CommandContext(ctx, "docker", "rm", newOldContainerName).Run()
 
@@ -2848,7 +2849,7 @@ func (w *BuildWorker) handleBuildTask(ctx context.Context, task *models.ProjectT
 		RepoURL:      project.RepoURL,
 		Branch:       project.Branch,
 		BuildCommand: project.BuildCommand,
-		ImageTag:     fmt.Sprintf("pushpaka_vahan_%s:%s", task.ProjectID, task.CommitSHA),
+		ImageTag:     fmt.Sprintf("pushpaka/%s:%s", task.ProjectID[:8], task.CommitSHA[:8]),
 		IsBuildOnly:  true, // Build only - don't start the server
 	}
 
