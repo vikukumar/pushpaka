@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/vikukumar/pushpaka/internal/services"
@@ -144,28 +145,51 @@ func (a *AIAgent) executeTool(tc models.AIToolCall) string {
 			}
 			switch action {
 			case "ls", "ls_la":
-				cmdStr = "ls -la " + path
-			case "cat":
-				cmdStr = "cat " + path
+				if runtime.GOOS == "windows" {
+					cmdStr = "dir " + path
+				} else {
+					cmdStr = "ls -la " + path
+				}
+			case "cat", "read_file":
+				if runtime.GOOS == "windows" {
+					cmdStr = "type " + path
+				} else {
+					cmdStr = "cat " + path
+				}
 			case "rm", "rm_rf":
-				cmdStr = "rm -rf " + path
+				if runtime.GOOS == "windows" {
+					cmdStr = "rmdir /s /q " + path + " 2>nul || del /f /q " + path
+				} else {
+					cmdStr = "rm -rf " + path
+				}
 			case "mkdir", "mkdir_p":
-				cmdStr = "mkdir -p " + path
-			case "read_file":
-				cmdStr = "cat " + path
+				if runtime.GOOS == "windows" {
+					cmdStr = "if not exist " + path + " mkdir " + path
+				} else {
+					cmdStr = "mkdir -p " + path
+				}
 			case "write_file", "write":
 				content := ""
 				if v, ok := args["content"]; ok {
 					content = fmt.Sprint(v)
 				}
-				// Use printf to handle escaping and write to file
-				cmdStr = fmt.Sprintf("printf %%s %q > %s", content, path)
+				if runtime.GOOS == "windows" {
+					// Use powershell for reliable writing on Windows if possible, or just basic echo
+					cmdStr = fmt.Sprintf("powershell -Command \"[System.IO.File]::WriteAllText('%s', '%s')\"", path, strings.ReplaceAll(content, "'", "''"))
+				} else {
+					// Use printf to handle escaping and write to file
+					cmdStr = fmt.Sprintf("printf %%s %q > %s", content, path)
+				}
 			case "append":
 				content := ""
 				if v, ok := args["content"]; ok {
 					content = fmt.Sprint(v)
 				}
-				cmdStr = fmt.Sprintf("printf %%s %q >> %s", content, path)
+				if runtime.GOOS == "windows" {
+					cmdStr = fmt.Sprintf("powershell -Command \"[System.IO.File]::AppendAllText('%s', '%s')\"", path, strings.ReplaceAll(content, "'", "''"))
+				} else {
+					cmdStr = fmt.Sprintf("printf %%s %q >> %s", content, path)
+				}
 			}
 		case "docker":
 			target := ""
@@ -191,7 +215,11 @@ func (a *AIAgent) executeTool(tc models.AIToolCall) string {
 	}
 
 	// Execute locally in workspace
-	cmd := exec.CommandContext(a.ctx, "sh", "-c", cmdStr)
+	shell, shellFlag := "sh", "-c"
+	if runtime.GOOS == "windows" {
+		shell, shellFlag = "cmd", "/c"
+	}
+	cmd := exec.CommandContext(a.ctx, shell, shellFlag, cmdStr)
 	cmd.Dir = workspace
 	out, err := cmd.CombinedOutput()
 	if err != nil {

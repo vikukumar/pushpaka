@@ -506,9 +506,13 @@ func (w *BuildWorker) processJob(ctx context.Context, job *models.DeploymentJob)
 
 				// Analyze failure for user information, but do NOT retry
 				if w.cfg.AIAPIKey != "" {
-					explanation, _ := w.analyzeFailure(job.DeploymentID, buildErr.Error())
+					explanation, fixCmd := w.analyzeFailure(job.DeploymentID, buildErr.Error())
 					if explanation != "" {
-						w.appendLog(job.DeploymentID, "info", "system", "AI Analysis: "+explanation)
+						msg := "AI Analysis: " + explanation
+						if fixCmd != "" {
+							msg += "\nSuggested Fix: " + fixCmd
+						}
+						w.appendLog(job.DeploymentID, "info", "system", msg)
 						buildErr = fmt.Errorf("%v (AI: %s)", buildErr, explanation)
 					}
 				}
@@ -538,9 +542,13 @@ func (w *BuildWorker) processJob(ctx context.Context, job *models.DeploymentJob)
 
 			// Analyze failure for user information, but do NOT retry
 			if w.cfg.AIAPIKey != "" {
-				explanation, _ := w.analyzeFailure(job.DeploymentID, buildErr.Error())
+				explanation, fixCmd := w.analyzeFailure(job.DeploymentID, buildErr.Error())
 				if explanation != "" {
-					w.appendLog(job.DeploymentID, "info", "system", "AI Analysis: "+explanation)
+					msg := "AI Analysis: " + explanation
+					if fixCmd != "" {
+						msg += "\nSuggested Fix: " + fixCmd
+					}
+					w.appendLog(job.DeploymentID, "info", "system", msg)
 					buildErr = fmt.Errorf("%v (AI: %s)", buildErr, explanation)
 				}
 			}
@@ -662,21 +670,7 @@ func (w *BuildWorker) deployDirect(ctx context.Context, job *models.DeploymentJo
 
 	// ─── Language / runtime detection ────────────────────────────────────────
 
-	// Mixed-project guard: if the repo contains both a package.json (likely
-	// frontend tooling) AND a Python entry file + a Python dependency file,
-	// treat the project as Python-primary and skip the Node.js branch.
-	isPrimaryPython := false
-	if hasFile("package.json") {
-		hasPyDep := hasFile("requirements.txt") || hasFile("pyproject.toml") || hasFile("Pipfile")
-		if hasPyDep {
-			for _, pyEntry := range []string{"main.py", "app.py", "server.py", "manage.py", "asgi.py"} {
-				if hasFile(pyEntry) {
-					isPrimaryPython = true
-					break
-				}
-			}
-		}
-	}
+	isPrimaryPython := isPrimaryPython(sourceDir)
 
 	files, _ := os.ReadDir(sourceDir)
 	switch {
@@ -1101,7 +1095,7 @@ func copyDirSkipModules(src, dst string) error {
 		}
 		// Skip entire node_modules and .git trees
 		base := filepath.Base(rel)
-		if info.IsDir() && (base == "node_modules" || base == ".git" || base == ".pnpm") {
+		if info.IsDir() && (base == "node_modules" || base == ".git" || base == ".pnpm" || base == ".venv" || base == "__pycache__") {
 			return filepath.SkipDir
 		}
 		target := filepath.Join(dst, rel)
@@ -1374,7 +1368,8 @@ func (w *BuildWorker) generateDockerfile(sourceDir string, job *models.Deploymen
 	var content string
 
 	// Detect framework/language
-	if _, err := os.Stat(filepath.Join(sourceDir, "package.json")); err == nil {
+	isPrimaryPy := isPrimaryPython(sourceDir)
+	if _, err := os.Stat(filepath.Join(sourceDir, "package.json")); err == nil && !isPrimaryPy {
 		pm := detectPackageManager(sourceDir)
 		lockFile := pmLockFile(pm)
 		buildCmd := pm + " run build"
@@ -1441,7 +1436,7 @@ COPY --from=builder /app/app .
 EXPOSE %d
 CMD ["%s"]
 `, finalPort, startCmd)
-	} else if _, err := os.Stat(filepath.Join(sourceDir, "requirements.txt")); err == nil {
+	} else if _, err := os.Stat(filepath.Join(sourceDir, "requirements.txt")); err == nil || isPrimaryPy {
 		startCmd := "python app.py"
 		if job.StartCommand != "" {
 			startCmd = job.StartCommand
@@ -1679,6 +1674,28 @@ func detectPackageManager(sourceDir string) string {
 		return "yarn"
 	}
 	return "npm"
+}
+
+func hasFile(dir, name string) bool {
+	_, err := os.Stat(filepath.Join(dir, name))
+	return err == nil
+}
+
+func isPrimaryPython(sourceDir string) bool {
+	if !hasFile(sourceDir, "package.json") {
+		return hasFile(sourceDir, "requirements.txt") || hasFile(sourceDir, "pyproject.toml") || hasFile(sourceDir, "Pipfile")
+	}
+	// Mixed-project guard: if the repo contains both a package.json AND a Python entry file
+	// + a Python dependency file, treat the project as Python-primary.
+	hasPyDep := hasFile(sourceDir, "requirements.txt") || hasFile(sourceDir, "pyproject.toml") || hasFile(sourceDir, "Pipfile")
+	if hasPyDep {
+		for _, pyEntry := range []string{"main.py", "app.py", "server.py", "manage.py", "asgi.py"} {
+			if hasFile(sourceDir, pyEntry) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // pmInstallArgs returns the install command arguments for the given package manager.
@@ -2183,10 +2200,14 @@ func (w *BuildWorker) fail(id, errMsg string) {
 	resolution := ""
 	if w.cfg.AIAPIKey != "" {
 		w.appendLog(id, "info", "system", "AI Assistant analyzing failure for immediate resolution...")
-		explanation, _ := w.analyzeFailure(id, errMsg)
+		explanation, fixCmd := w.analyzeFailure(id, errMsg)
 		resolution = explanation
-		if resolution != "" {
-			w.appendLog(id, "info", "system", "AI RECOMMENDED FIX: "+resolution)
+		if explanation != "" {
+			msg := "AI RECOMMENDED FIX: " + explanation
+			if fixCmd != "" {
+				msg += "\nCOMMAND: " + fixCmd
+			}
+			w.appendLog(id, "info", "system", msg)
 		}
 	}
 
@@ -2298,6 +2319,10 @@ func (w *BuildWorker) analyzeFailure(deploymentID, errMsg string) (string, strin
 		return "Build process was interrupted (context canceled). This usually happens during server restarts or due to a very slow environment. Retrying may help.", ""
 	}
 
+	if w.aiSvc == nil || !w.aiSvc.Available() {
+		return "AI Assistant not configured", ""
+	}
+
 	// Fetch last 50 logs for context
 	var logs []models.DeploymentLog
 	w.db.Where("deployment_id = ?", deploymentID).Order("created_at desc").Limit(50).Find(&logs)
@@ -2308,11 +2333,12 @@ func (w *BuildWorker) analyzeFailure(deploymentID, errMsg string) (string, strin
 	}
 	contextLogs := sb.String()
 
-	prompt := fmt.Sprintf(`The deployment failed with error: %s
+	systemPrompt := "You are the Pushpaka AI DevOps Assistant. Analyze the failure and provide a resolution. Respond ONLY with a JSON object."
+	userPrompt := fmt.Sprintf(`The deployment failed with error: %s
 Recent logs:
 %s
 
-You are the Pushpaka AI DevOps Assistant. Analyze the failure and provide a resolution.
+Analyze the failure and provide a resolution.
 If the issue can be fixed by running a shell command (e.g., installing a missing package, clearing a cache), provide that command.
 Respond ONLY with a JSON object in this format:
 {
@@ -2321,68 +2347,27 @@ Respond ONLY with a JSON object in this format:
   "confidence": 0.95
 }`, errMsg, contextLogs)
 
-	payload := map[string]any{
-		"model": w.cfg.AIModel,
-		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
-		},
-		"response_format": map[string]string{"type": "json_object"},
-	}
-
-	data, _ := json.Marshal(payload)
-
-	apiURL := w.cfg.AIBaseURL
-	if apiURL == "" {
-		switch w.cfg.AIProvider {
-		case "openai":
-			apiURL = "https://api.openai.com/v1/chat/completions"
-		case "openrouter":
-			apiURL = "https://openrouter.ai/api/v1/chat/completions"
-		case "ollama":
-			apiURL = "http://localhost:11434/api/chat"
-		default:
-			return "No AI provider configured", ""
-		}
-	}
-
-	client := &http.Client{Timeout: 45 * time.Second}
-	req, _ := http.NewRequest("POST", apiURL, bytes.NewBuffer(data))
-	req.Header.Set("Content-Type", "application/json")
-	if w.cfg.AIAPIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+w.cfg.AIAPIKey)
-	}
-
-	resp, err := client.Do(req)
+	reply, err := w.aiSvc.Ask(systemPrompt, userPrompt)
 	if err != nil {
-		log.Warn().Err(err).Msg("AI analysis failed to connect")
+		log.Warn().Err(err).Msg("AI analysis failed")
 		return "AI Assistant unavailable", ""
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return "AI Assistant returned error", ""
+	// Clean up reply in case there's markdown
+	reply = strings.TrimPrefix(reply, "```json")
+	reply = strings.TrimSuffix(reply, "```")
+	reply = strings.TrimSpace(reply)
+
+	var fix struct {
+		Explanation string  `json:"explanation"`
+		FixCommand  string  `json:"fix_command"`
+		Confidence  float64 `json:"confidence"`
+	}
+	if err := json.Unmarshal([]byte(reply), &fix); err == nil {
+		return fix.Explanation, fix.FixCommand
 	}
 
-	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err == nil && len(result.Choices) > 0 {
-		var fix struct {
-			Explanation string  `json:"explanation"`
-			FixCommand  string  `json:"fix_command"`
-			Confidence  float64 `json:"confidence"`
-		}
-		if err := json.Unmarshal([]byte(result.Choices[0].Message.Content), &fix); err == nil {
-			return fix.Explanation, fix.FixCommand
-		}
-		return strings.TrimSpace(result.Choices[0].Message.Content), ""
-	}
-
-	return "No specific resolution found", ""
+	return strings.TrimSpace(reply), ""
 }
 
 func (w *BuildWorker) appendLog(deploymentID, level, stream, message string) {
@@ -2445,7 +2430,8 @@ func (w *BuildWorker) healthCheck(ctx context.Context, deployURL string) bool {
 
 // runBuildInSource executes dependency installation and build scripts in the source directory.
 func (w *BuildWorker) runBuildInSource(ctx context.Context, job *models.DeploymentJob, sourceDir string) error {
-	if _, err := os.Stat(filepath.Join(sourceDir, "package.json")); err == nil {
+	isPrimaryPy := isPrimaryPython(sourceDir)
+	if _, err := os.Stat(filepath.Join(sourceDir, "package.json")); err == nil && !isPrimaryPy {
 		pm := detectPackageManager(sourceDir)
 
 		// Kill any lingering npm/node processes on Windows to release file locks
