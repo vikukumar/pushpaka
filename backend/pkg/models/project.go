@@ -18,14 +18,14 @@ type Project struct {
 	UserID       string      `gorm:"index;type:varchar(255);not null" json:"user_id"`
 	Type         ProjectType `gorm:"type:varchar(20);default:'cd'" json:"type"`
 	Name         string      `gorm:"type:varchar(255);not null" json:"name"`
-	RepoURL      string `gorm:"type:varchar(255);not null" json:"repo_url"`
-	Branch       string `gorm:"type:varchar(100)" json:"branch"`
-	BuildCommand string `gorm:"type:text" json:"build_command"`
-	StartCommand string `gorm:"type:text" json:"start_command"`
-	Port         int    `gorm:"default:3000" json:"port"`
-	TestCommand  string `gorm:"type:text" json:"test_command"`
-	Framework    string `gorm:"type:varchar(50)" json:"framework"`
-	Status       string `gorm:"type:varchar(50);default:'created'" json:"status"`
+	RepoURL      string      `gorm:"type:varchar(255);not null" json:"repo_url"`
+	Branch       string      `gorm:"type:varchar(100)" json:"branch"`
+	BuildCommand string      `gorm:"type:text" json:"build_command"`
+	StartCommand string      `gorm:"type:text" json:"start_command"`
+	Port         int         `gorm:"default:3000" json:"port"`
+	TestCommand  string      `gorm:"type:text" json:"test_command"`
+	Framework    string      `gorm:"type:varchar(50)" json:"framework"`
+	Status       string      `gorm:"type:varchar(50);default:'created'" json:"status"`
 	// GitToken is the personal access token for cloning private repositories.
 	// It is NEVER serialised into API responses (json:"-").
 	GitToken  string `gorm:"type:text" json:"-"`
@@ -69,28 +69,28 @@ type Project struct {
 type CreateProjectRequest struct {
 	Type             ProjectType `json:"type" gorm:"default:'cd'"`
 	Name             string      `json:"name"            binding:"required,min=2,max=64"`
-	RepoURL          string `json:"repo_url"        binding:"omitempty,url"`
-	Branch           string `json:"branch"`
-	InstallCommand   string `json:"install_command"`
-	BuildCommand     string `json:"build_command"`
-	StartCommand     string `json:"start_command"`
-	TestCommand      string `json:"test_command"`
-	RunDir           string `json:"run_dir"`
-	Port             int    `json:"port"`
-	Framework        string `json:"framework"`
-	IsPrivate        bool   `json:"is_private"`
-	GitToken         string `json:"git_token"`
-	CPULimit         string `json:"cpu_limit"`
-	MemoryLimit      string `json:"memory_limit"`
-	RestartPolicy    string `json:"restart_policy"`
-	DeployTarget     string `json:"deploy_target"`
-	K8sNamespace     string `json:"k8s_namespace"`
-	MaxDeployments   int    `json:"max_deployments"` // Default: 2 (1 main + 1 testing)
-	MaxBackups       int    `json:"max_backups"`     // Default: 3
-	AutoSyncEnabled  bool   `json:"auto_sync_enabled"`
-	SyncIntervalSecs int    `json:"sync_interval_secs"`
-	Language         string `json:"language"`
-	PackageManager   string `json:"package_manager"`
+	RepoURL          string      `json:"repo_url"        binding:"omitempty,url"`
+	Branch           string      `json:"branch"`
+	InstallCommand   string      `json:"install_command"`
+	BuildCommand     string      `json:"build_command"`
+	StartCommand     string      `json:"start_command"`
+	TestCommand      string      `json:"test_command"`
+	RunDir           string      `json:"run_dir"`
+	Port             int         `json:"port"`
+	Framework        string      `json:"framework"`
+	IsPrivate        bool        `json:"is_private"`
+	GitToken         string      `json:"git_token"`
+	CPULimit         string      `json:"cpu_limit"`
+	MemoryLimit      string      `json:"memory_limit"`
+	RestartPolicy    string      `json:"restart_policy"`
+	DeployTarget     string      `json:"deploy_target"`
+	K8sNamespace     string      `json:"k8s_namespace"`
+	MaxDeployments   int         `json:"max_deployments"` // Default: 2 (1 main + 1 testing)
+	MaxBackups       int         `json:"max_backups"`     // Default: 3
+	AutoSyncEnabled  bool        `json:"auto_sync_enabled"`
+	SyncIntervalSecs int         `json:"sync_interval_secs"`
+	Language         string      `json:"language"`
+	PackageManager   string      `json:"package_manager"`
 }
 
 // UpdateProjectRequest allows updating mutable project fields.

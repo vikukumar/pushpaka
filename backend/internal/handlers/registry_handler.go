@@ -22,9 +22,9 @@ func (h *RegistryHandler) CreateRepo(c *gin.Context) {
 	userID := c.GetString("user_id") // Assuming middleware sets this
 	if userID == "" {
 		// Fallback if GetUserID not used
-		userID = c.Request.Header.Get("X-User-ID") 
+		userID = c.Request.Header.Get("X-User-ID")
 	}
-	
+
 	var repo models.RegistryRepo
 	if err := c.ShouldBindJSON(&repo); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -64,7 +64,7 @@ func (h *RegistryHandler) ListRepos(c *gin.Context) {
 func (h *RegistryHandler) DeleteRepo(c *gin.Context) {
 	userID := c.GetString("user_id")
 	id := c.Param("id")
-	
+
 	repo, err := h.repo.GetRepo(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "repo not found"})

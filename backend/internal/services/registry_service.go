@@ -59,7 +59,7 @@ func (s *RegistryService) HandleOCI(w http.ResponseWriter, r *http.Request) {
 
 	// 2. Auth check
 	// Standard Docker clients use Basic Auth.
-	// For now, we'll allow public reads if we implemented that logic, 
+	// For now, we'll allow public reads if we implemented that logic,
 	// but for writes we MUST auth.
 	user, password, hasAuth := r.BasicAuth()
 	if !hasAuth && r.Method != http.MethodGet {
@@ -227,6 +227,6 @@ func (s *RegistryService) verifyAccess(username, password string, project *model
 
 	// 2. Fallback to API Key / Token
 	// (Implementation depends on if we want to support long-lived tokens for registry)
-	
+
 	return false
 }
