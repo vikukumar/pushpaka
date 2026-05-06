@@ -40,10 +40,10 @@ export default function RegistryPage() {
   });
 
   useEffect(() => {
-    if (projectsData?.length > 0) {
+    if (projectsData && projectsData.length > 0) {
       // If current selected project is not in registry list, select the first one
-      if (!selectedProjectId || !projectsData.find((p: any) => p.id === selectedProjectId)) {
-        setSelectedProjectId(projectsData[0].id);
+      if (!selectedProjectId || !projectsData?.find((p: any) => p.id === selectedProjectId)) {
+        setSelectedProjectId(projectsData?.[0]?.id || '');
       }
     } else {
       setSelectedProjectId('');
