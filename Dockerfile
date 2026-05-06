@@ -20,7 +20,7 @@ RUN apk add --no-cache \
     npm \
     curl \
     docker-cli \
-    docker-buildx
+    docker-cli-buildx
 
 # Install pnpm for frontend builds
 RUN npm install -g pnpm@latest
@@ -58,7 +58,7 @@ RUN apk add --no-cache \
     curl \
     git \
     docker-cli \
-    docker-buildx \
+    docker-cli-buildx \
     nodejs \
     npm \
     go \
