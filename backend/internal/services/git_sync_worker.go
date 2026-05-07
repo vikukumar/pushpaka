@@ -188,7 +188,7 @@ func (w *GitSyncWorker) processSyncTask(taskID string) {
 	}
 
 	sourcePath := os.ExpandEnv(w.projectsDir + "/" + p.ID + "/" + task.CommitSHA)
-	err = w.gitSyncService.CloneTo(p.RepoURL, p.Branch, sourcePath)
+	err = w.gitSyncService.CloneTo(p.RepoURL, p.Branch, sourcePath, p.GitToken)
 	if err != nil {
 		w.taskDispatcher.HandleTaskCompletion(task.ID, false, fmt.Sprintf("Git sync failed: %v", err))
 		return

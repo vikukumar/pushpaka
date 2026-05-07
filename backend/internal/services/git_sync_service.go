@@ -72,8 +72,13 @@ func (s *GitSyncService) InitializeSyncTracking(deployment *models.Deployment, p
 
 // CheckForUpdates checks for new commits in the git repository
 func (s *GitSyncService) CheckForUpdates(track *models.GitSyncTrack) error {
+	p, err := s.projectRepo.FindByIDInternal(track.ProjectID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch project: %w", err)
+	}
+
 	// Get latest commit from remote
-	latestCommit, err := s.getFetchLatestCommit(track.Repository, track.Branch)
+	latestCommit, err := s.getFetchLatestCommit(track.Repository, track.Branch, p.GitToken)
 	if err != nil {
 		return fmt.Errorf("failed to fetch latest commit: %w", err)
 	}
@@ -92,7 +97,7 @@ func (s *GitSyncService) CheckForUpdates(track *models.GitSyncTrack) error {
 		track.SyncStatus = models.GitSyncOutOfSync
 
 		// Get git diff if available
-		diff, err := s.getGitDiff(track.Repository, track.CurrentCommitSHA, track.LatestCommitSHA)
+		diff, err := s.getGitDiff(track.Repository, track.CurrentCommitSHA, track.LatestCommitSHA, p.GitToken)
 		if err == nil && diff != nil {
 			track.TotalChanges = diff.TotalChanges
 			track.TotalAdditions = diff.TotalAdditions
@@ -172,7 +177,12 @@ func (s *GitSyncService) SyncDeployment(trackID string, userID string, force boo
 	startTime := time.Now()
 
 	// Attempt to sync
-	clonePath, err := s.cloneRepository(track.Repository, track.Branch)
+	p, err := s.projectRepo.FindByIDInternal(track.ProjectID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch project: %w", err)
+	}
+
+	clonePath, err := s.cloneRepository(track.Repository, track.Branch, p.GitToken)
 	if err != nil {
 		track.SyncStatus = models.GitSyncFailed
 		track.LastSyncAttemptError = err.Error()
@@ -247,7 +257,7 @@ func (s *GitSyncService) ApproveSyncRequest(trackID string, userID string, appro
 }
 
 // getFetchLatestCommit fetches the latest commit info from remote
-func (s *GitSyncService) getFetchLatestCommit(repo, branch string) (*models.GitCommitInfo, error) {
+func (s *GitSyncService) getFetchLatestCommit(repo, branch, token string) (*models.GitCommitInfo, error) {
 	// Using GitHub API for demo - can be extended to support other git providers
 	if !strings.Contains(repo, "github.com") {
 		// If we have a local clone in ProjectsDir, use it to get full info
@@ -265,11 +275,25 @@ func (s *GitSyncService) getFetchLatestCommit(repo, branch string) (*models.GitC
 
 	// Fetch from GitHub API
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/commits/%s", owner, repoName, branch)
-	resp, err := http.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if token != "" {
+		req.Header.Set("Authorization", "token "+token)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch commit: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("github api returned status %d", resp.StatusCode)
+	}
 
 	var data struct {
 		SHA    string `json:"sha"`
@@ -299,34 +323,11 @@ func (s *GitSyncService) getFetchLatestCommit(repo, branch string) (*models.GitC
 	}, nil
 }
 
-// getLocalLatestCommit gets latest commit from local git repo
-func (s *GitSyncService) getLocalLatestCommit(repo, branch string) (*models.GitCommitInfo, error) {
-	// 1. Try to find local clone first (most reliable for commit messages)
-	// We need the project ID to find the directory, but s don't have it here directly easily.
-	// As a fallback, use ls-remote for SHA, but it won't give the message.
-
-	cmd := exec.Command("git", "ls-remote", repo, fmt.Sprintf("refs/heads/%s", branch))
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get latest commit: %w", err)
-	}
-
-	parts := strings.Fields(string(output))
-	if len(parts) == 0 {
-		return nil, fmt.Errorf("no commits found")
-	}
-
-	return &models.GitCommitInfo{
-		SHA:       parts[0],
-		Timestamp: time.Now().UTC(),
-	}, nil
-}
-
 // GetLatestCommitInfo fetches current commit info for a project
 func (s *GitSyncService) GetLatestCommitInfo(project *models.Project) (*models.GitCommitInfo, error) {
 	// If it's github, use API
 	if strings.Contains(project.RepoURL, "github.com") {
-		return s.getFetchLatestCommit(project.RepoURL, project.Branch)
+		return s.getFetchLatestCommit(project.RepoURL, project.Branch, project.GitToken)
 	}
 
 	// For non-GitHub or private-access, check ProjectsDir if cloned
@@ -355,24 +356,35 @@ func (s *GitSyncService) GetLatestCommitInfo(project *models.Project) (*models.G
 	return s.getLocalLatestCommit(project.RepoURL, project.Branch)
 }
 
+// getLocalLatestCommit gets latest commit from local git repo
+func (s *GitSyncService) getLocalLatestCommit(repo, branch string) (*models.GitCommitInfo, error) {
+	cmd := exec.Command("git", "ls-remote", repo, fmt.Sprintf("refs/heads/%s", branch))
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest commit: %w", err)
+	}
+
+	parts := strings.Fields(string(output))
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("no commits found")
+	}
+
+	return &models.GitCommitInfo{
+		SHA:       parts[0],
+		Timestamp: time.Now().UTC(),
+	}, nil
+}
+
 // getGitDiff gets the diff between two commits
-func (s *GitSyncService) getGitDiff(repo, fromCommit, toCommit string) (*models.GitDiffSummary, error) {
-	clonePath, err := s.cloneRepository(repo, "")
+func (s *GitSyncService) getGitDiff(repo, fromCommit, toCommit, token string) (*models.GitDiffSummary, error) {
+	clonePath, err := s.cloneRepository(repo, "", token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone repository: %w", err)
 	}
 	defer os.RemoveAll(clonePath)
 
-	// Get diff stat
-	cmd := exec.Command("git", "diff", "--stat", fmt.Sprintf("%s..%s", fromCommit, toCommit))
-	cmd.Dir = clonePath
-	err = cmd.Run()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get diff stat: %w", err)
-	}
-
 	// Get diff format
-	cmd = exec.Command("git", "diff", "--numstat", fmt.Sprintf("%s..%s", fromCommit, toCommit))
+	cmd := exec.Command("git", "diff", "--numstat", fmt.Sprintf("%s..%s", fromCommit, toCommit))
 	cmd.Dir = clonePath
 	numstatOutput, err := cmd.Output()
 	if err != nil {
@@ -386,7 +398,6 @@ func (s *GitSyncService) getGitDiff(repo, fromCommit, toCommit string) (*models.
 		},
 	}
 
-	// Parse numstat output
 	for _, line := range strings.Split(string(numstatOutput), "\n") {
 		if line == "" {
 			continue
@@ -417,17 +428,24 @@ func (s *GitSyncService) getGitDiff(repo, fromCommit, toCommit string) (*models.
 }
 
 // cloneRepository clones a git repository
-func (s *GitSyncService) cloneRepository(repo, branch string) (string, error) {
+func (s *GitSyncService) cloneRepository(repo, branch, token string) (string, error) {
 	clonePath := filepath.Join(s.tempDir, fmt.Sprintf("pushpaka-sync-%d", time.Now().UnixNano()))
+
+	// Inject token into URL if provided
+	authRepo := repo
+	if token != "" && strings.HasPrefix(repo, "https://") {
+		authRepo = strings.Replace(repo, "https://", fmt.Sprintf("https://%s@", token), 1)
+	}
 
 	cmd := exec.Command("git", "clone")
 	if branch != "" {
 		cmd.Args = append(cmd.Args, "-b", branch)
 	}
-	cmd.Args = append(cmd.Args, "--depth", "1", repo, clonePath)
+	cmd.Args = append(cmd.Args, "--depth", "1", authRepo, clonePath)
 
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("git clone failed: %v: %s", err, string(output))
+		errMsg := strings.ReplaceAll(string(output), token, "****")
+		return "", fmt.Errorf("git clone failed: %v: %s", err, errMsg)
 	}
 
 	return clonePath, nil
@@ -462,56 +480,35 @@ func (s *GitSyncService) ShouldAutoSync(track *models.GitSyncTrack, config *mode
 	if !config.Enabled {
 		return false
 	}
-
-	// Check allowed branches
-	var allowedBranches []string
-	if config.AllowedBranches != "" {
-		if err := json.Unmarshal([]byte(config.AllowedBranches), &allowedBranches); err != nil {
-			allowedBranches = []string{}
-		}
-	}
-	if len(allowedBranches) > 0 {
-		allowed := false
-		for _, b := range allowedBranches {
-			if b == track.Branch {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			return false
-		}
-	}
-
-	if config.OnlyProdReady {
-		// Check if commit is tagged as prod-ready
-		// This would require additional git tag checking
-		return false
-	}
-
 	return track.SyncStatus == models.GitSyncOutOfSync
 }
 
-// CloneTo clones a repository to a specific target directory
-func (s *GitSyncService) CloneTo(repo, branch, targetDir string) error {
+// CloneTo clones a repository to a specific target directory with optional token
+func (s *GitSyncService) CloneTo(repo, branch, targetDir, token string) error {
 	// Create target directory if it doesn't exist
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return fmt.Errorf("failed to create target directory: %w", err)
 	}
 
-	// If directory is not empty, assume it's already cloned or needs reset
-	// For simplicity in a commit-specific dir, we expect it to be empty
+	// If directory is not empty, assume it's already cloned
 	entries, _ := os.ReadDir(targetDir)
 	if len(entries) > 0 {
-		return nil // Already cloned
+		return nil
+	}
+
+	// Inject token into URL if provided
+	authRepo := repo
+	if token != "" && strings.HasPrefix(repo, "https://") {
+		authRepo = strings.Replace(repo, "https://", fmt.Sprintf("https://%s@", token), 1)
 	}
 
 	// Clone
-	// Note: using -b <branch> and . as target path
-	cmd := exec.Command("git", "clone", "--depth", "1", "-b", branch, repo, ".")
+	cmd := exec.Command("git", "clone", "--depth", "1", "-b", branch, authRepo, ".")
 	cmd.Dir = targetDir
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git clone failed: %v, output: %s", err, string(output))
+		// Scrub token from error message for security
+		errMsg := strings.ReplaceAll(string(output), token, "****")
+		return fmt.Errorf("git clone failed: %v, output: %s", err, errMsg)
 	}
 
 	return nil
