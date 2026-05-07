@@ -44,7 +44,9 @@ RUN go work sync
 
 # Copy frontend dependency manifests
 COPY frontend/package.json frontend/pnpm-lock.yaml ./frontend/
-RUN cd frontend && pnpm install --no-frozen-lockfile
+# pnpm v10+ blocks build scripts for native deps (sharp, unrs-resolver) by default.
+# Pre-approve known safe native packages before install.
+RUN cd frontend && pnpm install --no-frozen-lockfile --config.unsafe-perm=true
 
 # Copy all source
 COPY . .
