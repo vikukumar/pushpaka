@@ -2844,7 +2844,7 @@ func (w *BuildWorker) handleBuildTask(ctx context.Context, task *models.ProjectT
 		RepoURL:      project.RepoURL,
 		Branch:       project.Branch,
 		BuildCommand: project.BuildCommand,
-		ImageTag:     fmt.Sprintf("pushpaka/%s:%s", task.ProjectID[:8], task.CommitSHA[:8]),
+		ImageTag:     fmt.Sprintf("pushpaka/%s:%s", shortID(task.ProjectID), shortID(task.CommitSHA)),
 		IsBuildOnly:  true, // Build only - don't start the server
 	}
 
@@ -3102,53 +3102,59 @@ func (w *BuildWorker) completeTask(id string, success bool, errStr string) {
 }
 
 func (w *BuildWorker) handleAITask(ctx context.Context, task *models.ProjectTask) {
-	// 1. Load project and failed job context
+	// 1. Load project
 	var project models.Project
 	if err := w.db.First(&project, "id = ?", task.ProjectID).Error; err != nil {
 		w.completeTask(task.ID, false, "Project not found")
 		return
 	}
 
-	// Find the last failed deployment to provide context to the AI
-	var lastDeployment models.Deployment
-	w.db.Order("created_at desc").First(&lastDeployment, "project_id = ? AND status = ?", task.ProjectID, "failed")
-
-	if lastDeployment.ID == "" {
-		w.completeTask(task.ID, false, "No failed deployment found to repair")
-		return
-	}
-
-	// Fetch logs for the failed deployment
-	var logs []models.DeploymentLog
-	w.db.Where("deployment_id = ?", lastDeployment.ID).Order("created_at asc").Find(&logs)
+	// 2. Gather log context: task-level logs first
+	var taskLogs []models.DeploymentLog
+	w.db.Where("deployment_id = ?", task.ID).Order("created_at asc").Find(&taskLogs)
 	logContext := ""
-	for _, l := range logs {
+	for _, l := range taskLogs {
 		logContext += fmt.Sprintf("[%s] %s\n", l.Level, l.Message)
 	}
 
-	w.appendLog(lastDeployment.ID, "info", "system", "Starting AI autonomous repair session...")
+	// 3. Also include last failed deployment logs for extra context
+	var lastDeployment models.Deployment
+	w.db.Order("created_at desc").First(&lastDeployment, "project_id = ? AND status = ?", task.ProjectID, "failed")
+	if lastDeployment.ID != "" {
+		var depLogs []models.DeploymentLog
+		w.db.Where("deployment_id = ?", lastDeployment.ID).Order("created_at asc").Find(&depLogs)
+		for _, l := range depLogs {
+			logContext += fmt.Sprintf("[deploy][%s] %s\n", l.Level, l.Message)
+		}
+	}
+
+	// 4. Choose the best log target for appendLog
+	logTarget := task.ID
+	if lastDeployment.ID != "" {
+		logTarget = lastDeployment.ID
+	}
+
+	w.appendLog(logTarget, "info", "system", "Starting AI autonomous repair session...")
 
 	job := &models.DeploymentJob{
 		ProjectID:    project.ID,
 		UserID:       project.UserID,
-		DeploymentID: lastDeployment.ID,
+		DeploymentID: logTarget,
 		RepoURL:      project.RepoURL,
 		Branch:       project.Branch,
 		GitToken:     project.GitToken,
 	}
 
-	// 2. Start AIAgent
+	// 5. Start AIAgent and Repair
 	agent := NewAIAgent(w, &project, job, w.aiSvc)
-
-	// 3. Perform repair with full log context
-	fullError := fmt.Sprintf("Error: %s\n\nRecent Logs:\n%s", task.Error, logContext)
+	fullError := fmt.Sprintf("Task Error: %s\n\nRecent Logs:\n%s", task.Error, logContext)
 	err := agent.Repair(fullError)
 	if err != nil {
-		w.appendLog(lastDeployment.ID, "error", "system", fmt.Sprintf("AI repair failed: %v", err))
+		w.appendLog(logTarget, "error", "system", fmt.Sprintf("AI repair failed: %v", err))
 		w.completeTask(task.ID, false, fmt.Sprintf("AI repair failed: %v", err))
 		return
 	}
 
-	w.appendLog(lastDeployment.ID, "info", "system", "AI repair session completed successfully. You can now retry the deployment.")
+	w.appendLog(logTarget, "info", "system", "AI repair session completed successfully. You can now retry the deployment.")
 	w.completeTask(task.ID, true, "")
 }

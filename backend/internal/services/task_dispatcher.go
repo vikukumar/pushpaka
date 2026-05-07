@@ -87,12 +87,20 @@ func (d *TaskDispatcher) queueTask(task *models.ProjectTask) {
 	// 2. In-Process Queue (Dev/Single Binary Mode)
 	if d.inQueue != nil {
 		roleString := string(task.Type)
+		// "aifix" tasks are consumed by the "ai" worker — map appropriately
+		if roleString == string(models.TaskTypeAIFix) {
+			roleString = "ai"
+		}
 		_ = d.inQueue.Push(roleString, payload)
 	}
 
 	// 3. Redis Queue (Production/Distributed Mode)
 	if d.rdb != nil {
 		roleQueue := fmt.Sprintf("pushpaka:tasks:%s", task.Type)
+		// Map aifix to the ai worker queue in Redis too
+		if task.Type == models.TaskTypeAIFix {
+			roleQueue = "pushpaka:tasks:ai"
+		}
 		d.rdb.LPush(context.Background(), roleQueue, payload)
 	}
 }
