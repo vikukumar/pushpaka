@@ -20,7 +20,11 @@ RUN apk add --no-cache \
     npm \
     curl \
     docker-cli \
-    docker-cli-buildx
+    docker-cli-buildx \
+    g++ \
+    gcc \
+    python3 \
+    make
 
 # Install pnpm for frontend builds
 RUN npm install -g pnpm@latest
@@ -40,7 +44,7 @@ RUN go work sync
 
 # Copy frontend dependency manifests
 COPY frontend/package.json frontend/pnpm-lock.yaml ./frontend/
-RUN cd frontend && echo "only-allow-trusted-dependencies=false" > .npmrc && pnpm install --no-frozen-lockfile
+RUN cd frontend && pnpm install --no-frozen-lockfile --allow-build=sharp,unrs-resolver
 
 # Copy all source
 COPY . .
