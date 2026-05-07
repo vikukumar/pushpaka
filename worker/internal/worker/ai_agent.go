@@ -191,6 +191,10 @@ func (a *AIAgent) executeTool(tc models.AIToolCall) string {
 					cmdStr = fmt.Sprintf("printf %%s %q >> %s", content, path)
 				}
 			}
+		case "shell":
+			if v, ok := args["command"]; ok {
+				cmdStr = fmt.Sprint(v)
+			}
 		case "docker":
 			target := ""
 			if v, ok := args["target"]; ok {

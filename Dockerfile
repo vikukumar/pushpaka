@@ -40,7 +40,7 @@ RUN go work sync
 
 # Copy frontend dependency manifests
 COPY frontend/package.json frontend/pnpm-lock.yaml ./frontend/
-RUN cd frontend && pnpm install --no-frozen-lockfile
+RUN cd frontend && pnpm config set only-allow-trusted-dependencies false && pnpm install --no-frozen-lockfile
 
 # Copy all source
 COPY . .

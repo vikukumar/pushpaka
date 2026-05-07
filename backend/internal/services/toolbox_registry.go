@@ -43,7 +43,30 @@ func (r *ToolboxRegistry) AllTools() []models.AITool {
 	// 8. Specialized "Healer" Tools (50+)
 	tools = append(tools, r.generateHealerTools()...)
 
+	// 9. Advanced System Tools
+	tools = append(tools, r.generateSystemTools()...)
+
 	return tools
+}
+
+func (r *ToolboxRegistry) generateSystemTools() []models.AITool {
+	return []models.AITool{
+		{
+			Type: "function",
+			Function: models.AIToolFunc{
+				Name:        "shell_exec",
+				Description: "Execute an arbitrary shell command in the workspace. Use this only when specialized tools are unavailable.",
+				Parameters: models.AIToolParams{
+					Type: "object",
+					Properties: map[string]models.AIToolParamProperty{
+						"project_id": {Type: "string", Description: "Project UUID"},
+						"command":    {Type: "string", Description: "The shell command to execute"},
+					},
+					Required: []string{"project_id", "command"},
+				},
+			},
+		},
+	}
 }
 
 func (r *ToolboxRegistry) generateNodeTools() []models.AITool {

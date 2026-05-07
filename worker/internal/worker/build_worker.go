@@ -2983,17 +2983,17 @@ func (w *BuildWorker) handleTestTask(ctx context.Context, task *models.ProjectTa
 	w.appendLog(task.ID, "info", "system", fmt.Sprintf("Starting isolated test instance on port %d...", testPort))
 	w.appendLog(task.ID, "info", "system", fmt.Sprintf("Test Directory: %s", testDir))
 
-	// 2. Start the application in the background
+	// 2. Determine Start Command for testing
 	startCmd := project.StartCommand
 	if startCmd == "" {
-		w.appendLog(task.ID, "info", "system", "No start command defined, detecting...")
+		w.appendLog(task.ID, "info", "system", "No start command defined, detecting standard start command...")
 		pm := detectPackageManager(testDir)
 		startCmd = detectNodeStartCmd(testDir, pm, testPort)
 	}
 
-	w.appendLog(task.ID, "info", "system", fmt.Sprintf("Execution command: %s", startCmd))
+	w.appendLog(task.ID, "info", "system", fmt.Sprintf("Starting test instance with command: %s", startCmd))
 
-	// Replace port placeholder if exists, otherwise set PORT env
+	// Replace port placeholders
 	startCmd = strings.ReplaceAll(startCmd, "$PORT", fmt.Sprintf("%d", testPort))
 	startCmd = strings.ReplaceAll(startCmd, "{{port}}", fmt.Sprintf("%d", testPort))
 
@@ -3037,21 +3037,32 @@ func (w *BuildWorker) handleTestTask(ctx context.Context, task *models.ProjectTa
 
 	// 4. Run the actual test command
 	testCmd := project.TestCommand
-	if testCmd != "" {
-		w.appendLog(task.ID, "info", "system", fmt.Sprintf("Running test command: %s", testCmd))
-		tCmd := exec.CommandContext(ctx, shell, shellFlag, testCmd)
-		tCmd.Dir = testDir
-		tCmd.Env = append(os.Environ(), fmt.Sprintf("TEST_URL=%s", testURL), fmt.Sprintf("PORT=%d", testPort))
-		tCmd.Stdout = &logWriter{deploymentID: task.ID, stream: "stdout", w: w}
-		tCmd.Stderr = &logWriter{deploymentID: task.ID, stream: "stderr", w: w}
-
-		if err := tCmd.Run(); err != nil {
-			_ = proc.Process.Kill()
-			w.completeTask(task.ID, false, fmt.Sprintf("Test command failed: %v", err))
-			return
+	if testCmd == "" {
+		w.appendLog(task.ID, "info", "system", "No test command defined, detecting standard test suite...")
+		pm := detectPackageManager(testDir)
+		switch pm {
+		case "npm", "pnpm", "yarn", "bun":
+			testCmd = fmt.Sprintf("%s test", pm)
+		case "go":
+			testCmd = "go test ./..."
+		case "pip", "poetry":
+			testCmd = "pytest"
+		default:
+			testCmd = "make test"
 		}
-	} else {
-		w.appendLog(task.ID, "info", "system", "No test command defined, health check passed.")
+	}
+
+	w.appendLog(task.ID, "info", "system", fmt.Sprintf("Running test command: %s", testCmd))
+	tCmd := exec.CommandContext(ctx, shell, shellFlag, testCmd)
+	tCmd.Dir = testDir
+	tCmd.Env = append(os.Environ(), fmt.Sprintf("TEST_URL=%s", testURL), fmt.Sprintf("PORT=%d", testPort))
+	tCmd.Stdout = &logWriter{deploymentID: task.ID, stream: "stdout", w: w}
+	tCmd.Stderr = &logWriter{deploymentID: task.ID, stream: "stderr", w: w}
+
+	if err := tCmd.Run(); err != nil {
+		_ = proc.Process.Kill()
+		w.completeTask(task.ID, false, fmt.Sprintf("Test command failed: %v", err))
+		return
 	}
 
 	// 5. Cleanup
