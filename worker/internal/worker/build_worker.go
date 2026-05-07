@@ -244,7 +244,7 @@ func (w *BuildWorker) runInstallerMode(ctx context.Context) {
 	// We'll install core runtimes needed for builds: Node, Go, Python, Java, C/C++
 	packages := []string{
 		"nodejs", "npm", "go", "python3", "py3-pip", "openjdk11",
-		"gcc", "g++", "make", "docker-cli",
+		"gcc", "g++", "make", "docker-cli", "docker-cli-buildx",
 	}
 
 	// Wait randomly up to 2 seconds to avoid apk lock contention if multiple containers start
