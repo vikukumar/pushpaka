@@ -75,7 +75,14 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	// Component resolution order:
+	//  1. CLI positional arg: pushpaka <all|api|worker>
+	//  2. PUSHPAKA_COMPONENT environment variable
+	//  3. Default: "all"
 	component := os.Getenv("PUSHPAKA_COMPONENT")
+	if args := flag.Args(); len(args) > 0 {
+		component = args[0]
+	}
 	if component == "" {
 		component = "all"
 	}
@@ -258,9 +265,18 @@ func buildRedisURLENV() {
 
 func init() {
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
+		out := flag.CommandLine.Output()
+		fmt.Fprintf(out, "Usage: %s [flags] [all|api|worker]\n\n", os.Args[0])
+		fmt.Fprintln(out, "Components:")
+		fmt.Fprintln(out, "  all     Run API server + embedded worker in a single process (default)")
+		fmt.Fprintln(out, "  api     Run API server only (requires external worker + Redis)")
+		fmt.Fprintln(out, "  worker  Run worker only (requires API server + Redis)")
+		fmt.Fprintln(out, "")
+		fmt.Fprintln(out, "Flags:")
 		flag.PrintDefaults()
-		fmt.Fprintln(flag.CommandLine.Output(), "")
-		fmt.Fprintln(flag.CommandLine.Output(), "The config file, when provided, overrides environment-derived values for the selected mode.")
+		fmt.Fprintln(out, "")
+		fmt.Fprintln(out, "The component can also be set via the PUSHPAKA_COMPONENT environment variable.")
+		fmt.Fprintln(out, "CLI arg takes priority over the environment variable.")
+		fmt.Fprintln(out, "The config file, when provided, overrides environment-derived values for the selected mode.")
 	}
 }
