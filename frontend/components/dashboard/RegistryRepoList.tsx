@@ -26,7 +26,7 @@ export function RegistryRepoList({ projectId }: RegistryRepoListProps) {
 
   const { data: repos, isLoading } = useQuery({
     queryKey: ['registry', 'repos', projectId],
-    queryFn: () => registryApi.listRepos(projectId).then(r => r.data as RegistryRepo[])
+    queryFn: () => registryApi.listRepos(projectId).then((r: any) => r.data as RegistryRepo[])
   })
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -148,7 +148,7 @@ export function RegistryRepoList({ projectId }: RegistryRepoListProps) {
             </p>
           </div>
         ) : (
-          repos?.map(repo => (
+          repos?.map((repo: any) => (
             <div key={repo.id} className="group card hover:border-brand-500/50 transition-all">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">

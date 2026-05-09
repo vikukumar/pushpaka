@@ -53,7 +53,7 @@ export default function RegistryPage() {
   // Fetch Repositories
   const { data: repos, isLoading } = useQuery({
     queryKey: ['registry', 'repos', selectedProjectId],
-    queryFn: () => registryApi.listRepos(selectedProjectId).then(r => r.data),
+    queryFn: () => registryApi.listRepos(selectedProjectId).then((r: any) => r.data),
     enabled: !!selectedProjectId,
   });
 

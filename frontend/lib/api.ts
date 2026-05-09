@@ -308,3 +308,5 @@ export const registryReposApi = {
     apiClient.post('/registry/replications', data),
 }
 
+export const registryApi = registryReposApi
+
