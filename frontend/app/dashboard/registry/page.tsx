@@ -19,6 +19,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { registryApi, projectsApi } from '@/lib/api';
 import { toast } from 'react-hot-toast';
+import { RegistryRepo } from '@/types';
 
 export default function RegistryPage() {
   const queryClient = useQueryClient();
@@ -186,7 +187,7 @@ export default function RegistryPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {filteredRepos.map((repo: any) => (
+          {filteredRepos.map((repo: RegistryRepo) => (
             <div key={repo.id} className="group relative bg-slate-900/40 border border-slate-800/50 hover:border-blue-500/30 transition-all rounded-2xl overflow-hidden backdrop-blur-xl">
               <div className="p-6">
                 <div className="flex items-start justify-between">

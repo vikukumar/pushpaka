@@ -148,7 +148,7 @@ export function RegistryRepoList({ projectId }: RegistryRepoListProps) {
             </p>
           </div>
         ) : (
-          repos?.map((repo: any) => (
+          repos?.map((repo: RegistryRepo) => (
             <div key={repo.id} className="group card hover:border-brand-500/50 transition-all">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
