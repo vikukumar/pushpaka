@@ -44,6 +44,7 @@ type ServiceRegistry struct {
 	AIExecutor     *services.AIToolsExecutor
 	TaskDispatcher *services.TaskDispatcher
 	RegistrySvc    *services.RegistryService
+	PATSvc         *services.PATService
 
 	UserRepo       *repositories.UserRepository
 	ProjectRepo    *repositories.ProjectRepository
@@ -132,6 +133,7 @@ func New(
 	aiHandler := handlers.NewAIHandler(aiSvc, logRepo, deploymentRepo, aiConfigRepo, cfg, aiExecutor)
 
 	registryHandler := handlers.NewRegistryHandler(reg.RegistryRepo, projectSvc)
+	patHandler := handlers.NewPATHandler(reg.PATSvc)
 
 	workerHandler := handlers.NewWorkerHandler(workerSvc)
 	terminalHandler := handlers.NewTerminalHandler(deploymentRepo, cfg)
@@ -316,6 +318,11 @@ func New(
 				registry.GET("/repos/:id/artifacts", registryHandler.ListArtifacts)
 				registry.POST("/repos/:id/sync", registryHandler.TriggerSync)
 				registry.POST("/replications", registryHandler.CreateReplication)
+				
+				// Personal Access Tokens
+				registry.GET("/tokens", patHandler.List)
+				registry.POST("/tokens", patHandler.Create)
+				registry.DELETE("/tokens/:id", patHandler.Delete)
 			}
 
 			// In-browser code editor (file browser + read + save + manipulations)
@@ -370,6 +377,8 @@ func New(
 	// These are served on the same port but separate prefix
 	if registrySvc != nil {
 		r.Any("/registry/oci/*ociPath", gin.WrapF(registrySvc.HandleOCI))
+		r.Any("/v2/*ociPath", gin.WrapF(registrySvc.HandleOCI))
+		r.Any("/v2/", gin.WrapF(registrySvc.HandleOCI))
 		r.Any("/registry/binary/*binaryPath", gin.WrapF(registrySvc.HandleBinary))
 	}
 

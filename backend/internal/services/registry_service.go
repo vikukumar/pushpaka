@@ -17,12 +17,16 @@ import (
 type RegistryService struct {
 	cfg        *config.Config
 	projectSvc *ProjectService
+	patSvc     *PATService
+	proxy      *ProxyHelper
 }
 
-func NewRegistryService(cfg *config.Config, projectSvc *ProjectService) *RegistryService {
+func NewRegistryService(cfg *config.Config, projectSvc *ProjectService, patSvc *PATService) *RegistryService {
 	return &RegistryService{
 		cfg:        cfg,
 		projectSvc: projectSvc,
+		patSvc:     patSvc,
+		proxy:      NewProxyHelper(),
 	}
 }
 
@@ -31,6 +35,7 @@ func (s *RegistryService) HandleOCI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Docker-Distribution-Api-Version", "registry/2.0")
 
 	path := strings.TrimPrefix(r.URL.Path, "/registry/oci/")
+	path = strings.TrimPrefix(path, "/v2/")
 	parts := strings.Split(path, "/")
 
 	if len(parts) < 2 {
@@ -47,12 +52,16 @@ func (s *RegistryService) HandleOCI(w http.ResponseWriter, r *http.Request) {
 	repoName := parts[1]
 
 	// 1. Verify project exists and is a Registry project
+	isProxy := false
 	project, err := s.projectSvc.GetInternal(projectID)
 	if err != nil {
-		http.Error(w, "Project not found", http.StatusNotFound)
-		return
-	}
-	if project.Type != models.ProjectTypeRegistry {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			isProxy = true
+		} else {
+			http.Error(w, "Project not found", http.StatusNotFound)
+			return
+		}
+	} else if project.Type != models.ProjectTypeRegistry {
 		http.Error(w, "Project is not a registry project", http.StatusBadRequest)
 		return
 	}
@@ -68,7 +77,7 @@ func (s *RegistryService) HandleOCI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if hasAuth {
+	if hasAuth && !isProxy {
 		// Verify credentials and project ownership
 		if !s.verifyAccess(user, password, project) {
 			w.Header().Set("WWW-Authenticate", `Basic realm="Pushpaka Registry"`)
@@ -79,16 +88,16 @@ func (s *RegistryService) HandleOCI(w http.ResponseWriter, r *http.Request) {
 
 	subPath := strings.Join(parts[2:], "/")
 
-	if strings.HasPrefix(subPath, "blobs/uploads/") {
+	if strings.HasPrefix(subPath, "blobs/uploads/") && !isProxy {
 		s.handleBlobUpload(w, r, projectID, repoName)
 		return
 	}
 	if strings.HasPrefix(subPath, "blobs/") {
-		s.handleBlobDownload(w, r, projectID, repoName)
+		s.handleBlobDownload(w, r, projectID, repoName, isProxy)
 		return
 	}
 	if strings.HasPrefix(subPath, "manifests/") {
-		s.handleManifest(w, r, projectID, repoName)
+		s.handleManifest(w, r, projectID, repoName, isProxy)
 		return
 	}
 
@@ -130,20 +139,28 @@ func (s *RegistryService) handleBlobUpload(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-func (s *RegistryService) handleBlobDownload(w http.ResponseWriter, r *http.Request, projectID, repoName string) {
+func (s *RegistryService) handleBlobDownload(w http.ResponseWriter, r *http.Request, projectID, repoName string, isProxy bool) {
 	parts := strings.Split(r.URL.Path, "/")
 	digest := parts[len(parts)-1]
 
 	blobFile := filepath.Join(s.cfg.RegistryDir, projectID, repoName, "blobs", digest)
 	if _, err := os.Stat(blobFile); os.IsNotExist(err) {
-		w.WriteHeader(http.StatusNotFound)
-		return
+		if isProxy {
+			err := s.proxy.FetchBlob(projectID, repoName, digest, blobFile)
+			if err != nil {
+				http.Error(w, "Blob not found and upstream fetch failed: "+err.Error(), http.StatusNotFound)
+				return
+			}
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 	}
 
 	http.ServeFile(w, r, blobFile)
 }
 
-func (s *RegistryService) handleManifest(w http.ResponseWriter, r *http.Request, projectID, repoName string) {
+func (s *RegistryService) handleManifest(w http.ResponseWriter, r *http.Request, projectID, repoName string, isProxy bool) {
 	parts := strings.Split(r.URL.Path, "/")
 	reference := parts[len(parts)-1] // tag or digest
 
@@ -151,13 +168,36 @@ func (s *RegistryService) handleManifest(w http.ResponseWriter, r *http.Request,
 	os.MkdirAll(manifestDir, 0755)
 	manifestFile := filepath.Join(manifestDir, reference)
 
-	if r.Method == http.MethodGet {
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		var contentType string
 		if _, err := os.Stat(manifestFile); os.IsNotExist(err) {
-			w.WriteHeader(http.StatusNotFound)
-			return
+			if isProxy {
+				ct, err := s.proxy.FetchManifest(projectID, repoName, reference, manifestFile, r)
+				if err != nil {
+					http.Error(w, "Manifest not found and upstream fetch failed: "+err.Error(), http.StatusNotFound)
+					return
+				}
+				contentType = ct
+			} else {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+		} else {
+			// Read cached content type if exists
+			ct, err := os.ReadFile(manifestFile + ".content-type")
+			if err == nil && len(ct) > 0 {
+				contentType = string(ct)
+			} else {
+				contentType = "application/vnd.docker.distribution.manifest.v2+json"
+			}
 		}
-		w.Header().Set("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
-		http.ServeFile(w, r, manifestFile)
+
+		w.Header().Set("Content-Type", contentType)
+		if r.Method == http.MethodGet {
+			http.ServeFile(w, r, manifestFile)
+		} else {
+			w.WriteHeader(http.StatusOK)
+		}
 		return
 	}
 
@@ -207,7 +247,19 @@ func (s *RegistryService) HandleBinary(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *RegistryService) verifyAccess(username, password string, project *models.Project) bool {
-	// 1. Try email/password
+	// 1. Check if it's a PAT
+	if strings.HasPrefix(password, "pushpaka_pat_") && s.patSvc != nil {
+		pat, err := s.patSvc.VerifyAndTouch(password)
+		if err == nil {
+			// Ensure the PAT belongs to the project owner
+			if pat.UserID == project.UserID {
+				return true
+			}
+			// (Optional) Check if the user is an admin or collaborator if implemented
+		}
+	}
+
+	// 2. Try email/password
 	authSvc := s.projectSvc.GetAuthService()
 	if authSvc == nil {
 		return false
@@ -224,9 +276,6 @@ func (s *RegistryService) verifyAccess(username, password string, project *model
 			return true
 		}
 	}
-
-	// 2. Fallback to API Key / Token
-	// (Implementation depends on if we want to support long-lived tokens for registry)
 
 	return false
 }

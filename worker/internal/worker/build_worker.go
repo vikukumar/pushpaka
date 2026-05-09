@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -2069,10 +2070,9 @@ func (w *BuildWorker) buildImage(ctx context.Context, job *models.DeploymentJob,
 		// Patch Dockerfile to remove --mount if present, as it requires BuildKit
 		dockerfilePath := filepath.Join(sourceDir, "Dockerfile")
 		if content, rerr := os.ReadFile(dockerfilePath); rerr == nil {
-			newContent := strings.ReplaceAll(string(content), "--mount=type=cache", "")
-			// Also handle other mount types just in case
-			newContent = strings.ReplaceAll(newContent, "--mount=type=bind", "")
-			newContent = strings.ReplaceAll(newContent, "--mount=type=tmpfs", "")
+			// Remove the entire --mount flag and its arguments
+			re := regexp.MustCompile(`--mount=[^\s]+`)
+			newContent := re.ReplaceAllString(string(content), "")
 			_ = os.WriteFile(dockerfilePath, []byte(newContent), 0644)
 		}
 

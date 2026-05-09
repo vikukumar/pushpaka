@@ -39,7 +39,12 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 
 func (h *ProjectHandler) List(c *gin.Context) {
 	userID := middleware.GetUserID(c)
-	projects, err := h.projectSvc.List(userID)
+	projectType := c.Query("type")
+	if projectType == "" {
+		projectType = "cd"
+	}
+
+	projects, err := h.projectSvc.ListByType(userID, projectType)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch projects"})
 		return

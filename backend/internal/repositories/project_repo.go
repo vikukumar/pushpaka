@@ -27,6 +27,13 @@ func (r *ProjectRepository) FindByUserID(userID string) ([]models.Project, error
 	return projects, err
 }
 
+func (r *ProjectRepository) FindByUserIDAndType(userID, projectType string) ([]models.Project, error) {
+	basemodel.EnsureSynced[models.Project](r.db)
+	var projects []models.Project
+	err := r.db.Where("user_id = ? AND type = ?", userID, projectType).Order("created_at desc").Find(&projects).Error
+	return projects, err
+}
+
 func (r *ProjectRepository) FindByID(id, userID string) (*models.Project, error) {
 	return basemodel.First[models.Project](r.db, "id = ? AND user_id = ?", id, userID)
 }

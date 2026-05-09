@@ -140,6 +140,10 @@ func (s *ProjectService) List(userID string) ([]models.Project, error) {
 	return s.projectRepo.FindByUserID(userID)
 }
 
+func (s *ProjectService) ListByType(userID, projectType string) ([]models.Project, error) {
+	return s.projectRepo.FindByUserIDAndType(userID, projectType)
+}
+
 func (s *ProjectService) Get(id, userID string) (*models.Project, error) {
 	p, err := s.projectRepo.FindByID(id, userID)
 	if err != nil {

@@ -128,6 +128,7 @@ func RunWithOptions(ctx context.Context, opts RunOptions) error {
 	commitRepo := repositories.NewCommitRepository(db)
 	taskRepo := repositories.NewTaskRepository(db)
 	registryRepo := repositories.NewRegistryManagementRepository(db)
+	patRepo := repositories.NewPATRepository(db)
 
 	// Services
 	authSvc := services.NewAuthService(userRepo, cfg)
@@ -146,7 +147,8 @@ func RunWithOptions(ctx context.Context, opts RunOptions) error {
 	aiSvc := services.NewAIService(cfg)
 	aiExecutor := services.NewAIToolsExecutor(deploymentSvc, logSvc, aiSvc)
 
-	registrySvc := services.NewRegistryService(cfg, projectSvc)
+	patSvc := services.NewPATService(patRepo)
+	registrySvc := services.NewRegistryService(cfg, projectSvc, patSvc)
 	replicationWorker := services.NewReplicationWorker(cfg, registryRepo, &log.Logger)
 
 	gitSyncSvc := services.NewGitSyncService(gitSyncRepo, projectRepo, deploymentRepo, cfg.ProjectsDir)
@@ -215,6 +217,7 @@ func RunWithOptions(ctx context.Context, opts RunOptions) error {
 		KVRepo:         kvRepo,
 		RegistryRepo:   registryRepo,
 		RegistrySvc:    registrySvc,
+		PATSvc:         patSvc,
 	}
 
 	// Background Tasks

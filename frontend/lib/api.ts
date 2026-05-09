@@ -51,7 +51,7 @@ export const authApi = {
 
 // Projects
 export const projectsApi = {
-  list: () => apiClient.get('/projects'),
+  list: (type = 'cd') => apiClient.get(`/projects?type=${type}`),
   get: (id: string) => apiClient.get(`/projects/${id}`),
   create: (data: {
     name: string
@@ -290,7 +290,14 @@ export const workersApi = {
 }
 
 // Registry Management
-export const registryApi = {
+// Registry tokens
+export const registryTokensApi = {
+  list: () => apiClient.get('/registry/tokens'),
+  create: (data: { name: string; description?: string; expires_in_days?: number }) => apiClient.post('/registry/tokens', data),
+  delete: (id: string) => apiClient.delete(`/registry/tokens/${id}`),
+}
+
+export const registryReposApi = {
   listRepos: (projectId: string) => apiClient.get(`/registry/repos?project_id=${projectId}`),
   createRepo: (data: { project_id: string; name: string; type: string; description?: string; is_public?: boolean }) =>
     apiClient.post('/registry/repos', data),

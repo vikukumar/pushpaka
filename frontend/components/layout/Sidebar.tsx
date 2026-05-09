@@ -49,7 +49,6 @@ const mainNavItems: NavItem[] = [
   { href: '/dashboard/activity',    label: 'Activity',     icon: Activity },
   { href: '/dashboard/editor',      label: 'Code',         icon: FileCode },
   { href: '/dashboard/files',       label: 'Files',        icon: FilesIcon },
-  { href: '/dashboard/registry',    label: 'Registry',     icon: Database },
   { href: '/dashboard/audit',       label: 'Audit Log',    icon: Shield },
 ]
 
@@ -70,6 +69,16 @@ const navGroups: NavGroup[] = [
       { href: '/dashboard/infra/workers', label: 'Workers',        icon: Server },
       { href: '/dashboard/infra/docker',  label: 'Docker',         icon: Container },
       { href: '/dashboard/infra/k8s',     label: 'Kubernetes',     icon: Server },
+    ],
+  },
+  {
+    label: 'Registry',
+    icon: Database,
+    items: [
+      { href: '/dashboard/registry/namespaces', label: 'Namespaces',   icon: FolderGit2 },
+      { href: '/dashboard/registry/repos',      label: 'Repositories', icon: Container },
+      { href: '/dashboard/registry/replications',label: 'Replications', icon: Activity },
+      { href: '/dashboard/registry/tokens',     label: 'Access Tokens',icon: Shield },
     ],
   },
 ]
