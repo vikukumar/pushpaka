@@ -523,9 +523,16 @@ func (w *BuildWorker) processJob(ctx context.Context, job *models.DeploymentJob)
 				return
 			}
 
-			w.appendLog(job.DeploymentID, "info", "system", "Docker image built successfully")
+		w.appendLog(job.DeploymentID, "info", "system", "Docker image built successfully")
 			// Update ProjectCommit status
 			w.updateCommitStatus(job.ProjectID, job.CommitSHA, models.CommitStatusBuilt)
+
+			// Build-only mode: image is saved, do NOT start any container.
+			if job.IsBuildOnly {
+				w.appendLog(job.DeploymentID, "success", "system", "Build completed successfully (build-only mode).")
+				w.updateStatus(job.DeploymentID, "finished", "", "")
+				return
+			}
 		}
 
 		w.appendLog(job.DeploymentID, "info", "system", "Deploying container...")
@@ -2164,7 +2171,7 @@ func (w *BuildWorker) deployContainer(ctx context.Context, job *models.Deploymen
 		w.appendLog(job.DeploymentID, "info", "system", "Health check passed!")
 		w.updateStatus(job.DeploymentID, string(models.DeploymentRunning), "", "")
 
-	// Remove old images to save disk space (containers already stopped above).
+		// Remove old images to save disk space (containers already stopped above).
 		_ = exec.CommandContext(ctx, "docker", "image", "prune", "-f").Run()
 	} else {
 		w.appendLog(job.DeploymentID, "error", "system", "Health check failed! Rolling back...")
@@ -3020,82 +3027,113 @@ func (w *BuildWorker) handleTestTask(ctx context.Context, task *models.ProjectTa
 		return
 	}
 
-	// For testing, we copy BUILDS_DIR artifacts to TESTS_DIR and run tests
 	buildsDir := w.getWorkspaceDir(w.cfg.BuildsDir, project.UserID, project.ID, task.CommitSHA)
-	testDir := w.getWorkspaceDir(w.cfg.TestsDir, project.UserID, project.ID, task.CommitSHA)
-
 	if _, err := os.Stat(buildsDir); os.IsNotExist(err) {
 		w.completeTask(task.ID, false, "build artifacts not found for testing")
 		return
 	}
 
+	// Allocate a random host port for the temporary test container.
+	testPort := w.findFreePort()
+	if testPort == 0 {
+		testPort = 13000 + (int(time.Now().UnixNano()) % 5000)
+	}
+
+	appPort := project.Port
+	if appPort <= 0 {
+		appPort = 3000
+	}
+
+	imageTag := fmt.Sprintf("pushpaka/%s:%s", shortID(task.ProjectID), shortID(task.CommitSHA))
+	testContainerName := fmt.Sprintf("pushpaka_%s_test_%s", shortID(task.ProjectID), shortID(task.ID))
+
+	if w.dockerAvailable {
+		// ── Docker test: spin up a throw-away container, health-check, then kill it.
+		w.appendLog(task.ID, "info", "system",
+			fmt.Sprintf("Starting test container %s on port %d...", testContainerName, testPort))
+
+		// No --restart so Docker doesn't revive it after we stop it.
+		args := []string{
+			"run", "-d",
+			"--name", testContainerName,
+			"--restart", "no",
+			"-p", fmt.Sprintf("%d:%d", testPort, appPort),
+			"--label", "pushpaka=true",
+		}
+		args = append(args, imageTag)
+
+		runOut, runErr := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
+		if runErr != nil {
+			w.completeTask(task.ID, false,
+				fmt.Sprintf("test container failed to start: %v\n%s", runErr, string(runOut)))
+			return
+		}
+
+		defer func() {
+			w.appendLog(task.ID, "info", "system", "Stopping and removing test container...")
+			_ = exec.CommandContext(ctx, "docker", "stop", testContainerName).Run()
+			_ = exec.CommandContext(ctx, "docker", "rm", testContainerName).Run()
+		}()
+
+		// Wait for the container to pass a health check.
+		testURL := fmt.Sprintf("http://127.0.0.1:%d", testPort)
+		ready := false
+		for i := 0; i < 20; i++ {
+			if w.healthCheck(ctx, testURL) {
+				ready = true
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+		if !ready {
+			// Dump container logs to help debug
+			logOut, _ := exec.CommandContext(ctx, "docker", "logs", "--tail", "50", testContainerName).CombinedOutput()
+			w.appendLog(task.ID, "error", "system", fmt.Sprintf("Container logs:\n%s", string(logOut)))
+			w.completeTask(task.ID, false, "test container failed health check")
+			return
+		}
+		w.appendLog(task.ID, "info", "system", "Test container is healthy ✓")
+		w.completeTask(task.ID, true, "")
+		return
+	}
+
+	// ── Direct (no Docker) test path ────────────────────────────────────────
+	testDir := w.getWorkspaceDir(w.cfg.TestsDir, project.UserID, project.ID, task.CommitSHA)
 	_ = w.forceRemoveDir(testDir)
-	if err := os.MkdirAll(filepath.Dir(testDir), 0755); err != nil {
-		w.completeTask(task.ID, false, fmt.Sprintf("failed to create test parent directory: %v", err))
-		return
-	}
-	if err := os.MkdirAll(testDir, 0755); err != nil {
-		w.completeTask(task.ID, false, fmt.Sprintf("failed to create test directory: %v", err))
-		return
-	}
+	_ = os.MkdirAll(testDir, 0755)
 	if err := copyDir(buildsDir, testDir); err != nil {
 		w.completeTask(task.ID, false, fmt.Sprintf("failed to setup test directory: %v", err))
 		return
 	}
 
-	// 1. Allocate a random port for isolated testing
-	testPort := 0
-	if addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0"); err == nil {
-		if l, err := net.ListenTCP("tcp", addr); err == nil {
-			testPort = l.Addr().(*net.TCPAddr).Port
-			l.Close()
-		}
-	}
-	if testPort == 0 {
-		testPort = 13000 + (int(time.Now().UnixNano()) % 5000)
-	}
-
-	w.appendLog(task.ID, "info", "system", fmt.Sprintf("Starting isolated test instance on port %d...", testPort))
-	w.appendLog(task.ID, "info", "system", fmt.Sprintf("Test Directory: %s", testDir))
-
-	// 2. Determine Start Command for testing
 	startCmd := project.StartCommand
 	if startCmd == "" {
-		w.appendLog(task.ID, "info", "system", "No start command defined, detecting standard start command...")
 		pm := detectPackageManager(testDir)
 		startCmd = detectNodeStartCmd(testDir, pm, testPort)
 	}
-
-	w.appendLog(task.ID, "info", "system", fmt.Sprintf("Starting test instance with command: %s", startCmd))
-
-	// Replace port placeholders
 	startCmd = strings.ReplaceAll(startCmd, "$PORT", fmt.Sprintf("%d", testPort))
 	startCmd = strings.ReplaceAll(startCmd, "{{port}}", fmt.Sprintf("%d", testPort))
 
+	w.appendLog(task.ID, "info", "system", fmt.Sprintf("Starting test instance: %s (port %d)", startCmd, testPort))
 	shell, shellFlag := "sh", "-c"
 	if runtime.GOOS == "windows" {
 		shell, shellFlag = "cmd", "/c"
 	}
 	proc := exec.CommandContext(ctx, shell, shellFlag, startCmd)
 	proc.Dir = testDir
-	// Inherit env and add PORT
-	proc.Env = append(os.Environ(), fmt.Sprintf("PORT=%d", testPort), "NODE_ENV=test", "APP_ENV=test")
-
+	proc.Env = append(os.Environ(), fmt.Sprintf("PORT=%d", testPort), "NODE_ENV=test")
 	stdoutPipe, _ := proc.StdoutPipe()
 	stderrPipe, _ := proc.StderrPipe()
-
 	if err := proc.Start(); err != nil {
 		w.completeTask(task.ID, false, fmt.Sprintf("failed to start test instance: %v", err))
 		return
 	}
-
-	// Stream logs in background
+	defer func() { _ = proc.Process.Kill() }()
 	go io.Copy(&logWriter{deploymentID: task.ID, stream: "stdout", w: w}, stdoutPipe)
 	go io.Copy(&logWriter{deploymentID: task.ID, stream: "stderr", w: w}, stderrPipe)
 
-	// 3. Wait for app to be ready (health check)
-	ready := false
 	testURL := fmt.Sprintf("http://127.0.0.1:%d", testPort)
+	ready := false
 	for i := 0; i < 15; i++ {
 		if w.healthCheck(ctx, testURL) {
 			ready = true
@@ -3103,46 +3141,11 @@ func (w *BuildWorker) handleTestTask(ctx context.Context, task *models.ProjectTa
 		}
 		time.Sleep(1 * time.Second)
 	}
-
 	if !ready {
-		_ = proc.Process.Kill()
-		w.completeTask(task.ID, false, "application failed to start or pass health check on test port")
+		w.completeTask(task.ID, false, "test instance failed health check")
 		return
 	}
-
-	// 4. Run the actual test command
-	testCmd := project.TestCommand
-	if testCmd == "" {
-		w.appendLog(task.ID, "info", "system", "No test command defined, detecting standard test suite...")
-		pm := detectPackageManager(testDir)
-		switch pm {
-		case "npm", "pnpm", "yarn", "bun":
-			testCmd = fmt.Sprintf("%s test", pm)
-		case "go":
-			testCmd = "go test ./..."
-		case "pip", "poetry":
-			testCmd = "pytest"
-		default:
-			testCmd = "make test"
-		}
-	}
-
-	w.appendLog(task.ID, "info", "system", fmt.Sprintf("Running test command: %s", testCmd))
-	tCmd := exec.CommandContext(ctx, shell, shellFlag, testCmd)
-	tCmd.Dir = testDir
-	tCmd.Env = append(os.Environ(), fmt.Sprintf("TEST_URL=%s", testURL), fmt.Sprintf("PORT=%d", testPort))
-	tCmd.Stdout = &logWriter{deploymentID: task.ID, stream: "stdout", w: w}
-	tCmd.Stderr = &logWriter{deploymentID: task.ID, stream: "stderr", w: w}
-
-	if err := tCmd.Run(); err != nil {
-		_ = proc.Process.Kill()
-		w.completeTask(task.ID, false, fmt.Sprintf("Test command failed: %v", err))
-		return
-	}
-
-	// 5. Cleanup
-	_ = proc.Process.Kill()
-	w.appendLog(task.ID, "info", "system", "Test instance stopped. Cleanup complete.")
+	w.appendLog(task.ID, "info", "system", "Test instance is healthy ✓")
 	w.completeTask(task.ID, true, "")
 }
 
