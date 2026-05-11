@@ -378,7 +378,6 @@ func New(
 	if registrySvc != nil {
 		r.Any("/registry/oci/*ociPath", gin.WrapF(registrySvc.HandleOCI))
 		r.Any("/v2/*ociPath", gin.WrapF(registrySvc.HandleOCI))
-		r.Any("/v2/", gin.WrapF(registrySvc.HandleOCI))
 		r.Any("/registry/binary/*binaryPath", gin.WrapF(registrySvc.HandleBinary))
 	}
 
