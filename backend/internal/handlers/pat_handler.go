@@ -36,7 +36,7 @@ func (h *PATHandler) Create(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"token": pat,
+		"token":       pat,
 		"plain_token": plainToken, // ONLY SHOWN ONCE
 	})
 }

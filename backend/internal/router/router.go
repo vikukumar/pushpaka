@@ -318,7 +318,7 @@ func New(
 				registry.GET("/repos/:id/artifacts", registryHandler.ListArtifacts)
 				registry.POST("/repos/:id/sync", registryHandler.TriggerSync)
 				registry.POST("/replications", registryHandler.CreateReplication)
-				
+
 				// Personal Access Tokens
 				registry.GET("/tokens", patHandler.List)
 				registry.POST("/tokens", patHandler.Create)

@@ -1,9 +1,9 @@
 package repositories
 
 import (
-	"gorm.io/gorm"
 	"github.com/vikukumar/pushpaka/pkg/basemodel"
 	"github.com/vikukumar/pushpaka/pkg/models"
+	"gorm.io/gorm"
 )
 
 type PATRepository struct {
