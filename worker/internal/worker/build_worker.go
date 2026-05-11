@@ -2102,34 +2102,18 @@ func buildCacheDir(cloneDir, projectID string) string {
 func (w *BuildWorker) deployContainer(ctx context.Context, job *models.DeploymentJob) (string, string, error) {
 	containerName := fmt.Sprintf("pushpaka_%s_%s", job.ProjectID[:8], job.DeploymentID[:8])
 
-	// ── Pre-flight: stop ALL previous containers for this project so their
-	// bound ports are released before we try to bind the new one.
-	// This must happen before `docker run`, not after, because Docker will
-	// refuse to start the new container if the old one still holds the port.
-	var previousDeployments []models.Deployment
-	w.db.Where("project_id = ? AND id != ?", job.ProjectID, job.DeploymentID).
-		Where("status IN ?", []string{"running", "building", "queued"}).
-		Find(&previousDeployments)
-	for _, old := range previousDeployments {
-		w.appendLog(job.DeploymentID, "info", "system",
-			fmt.Sprintf("Pre-flight: stopping previous container for deployment %s", old.ID[:8]))
-		oldName := fmt.Sprintf("pushpaka_%s_%s", old.ProjectID[:8], old.ID[:8])
-		_ = exec.CommandContext(ctx, "docker", "stop", oldName).Run()
-		_ = exec.CommandContext(ctx, "docker", "rm", oldName).Run()
-		// Fallback legacy names
-		_ = exec.CommandContext(ctx, "docker", "stop", fmt.Sprintf("pushpaka-%s-%s", old.ProjectID[:8], old.ID[:8])).Run()
-		_ = exec.CommandContext(ctx, "docker", "rm", fmt.Sprintf("pushpaka-%s-%s", old.ProjectID[:8], old.ID[:8])).Run()
-		_ = exec.CommandContext(ctx, "docker", "stop", old.ProjectID[:8]).Run()
-		_ = exec.CommandContext(ctx, "docker", "rm", old.ProjectID[:8]).Run()
-		w.db.Model(&models.Deployment{}).Where("id = ?", old.ID).Update("status", "stopped")
-	}
+	// ── Pre-flight: stop ALL running pushpaka_* containers (except the one we
+	// are about to create) so their bound ports are released before docker run.
+	//
+	// We query Docker directly instead of the DB because --restart always keeps
+	// a container running even after its DB record is marked "stopped".  The DB
+	// is therefore not a reliable source of truth for what is actually alive.
+	w.stopRunningDeploymentContainers(ctx, containerName)
 
-	// Prune any other stopped pushpaka_* containers left over from previous runs
-	// (e.g. from a crashed worker that never cleaned up).
+	// Prune any leftover stopped pushpaka_* containers (orphans from crashes).
 	w.pruneStoppedDeploymentContainers(ctx)
 
 	// Re-allocate a fresh free port now that old containers have released theirs.
-	// The port chosen by the API at dispatch time may have since been taken.
 	if freePort := w.findFreePort(); freePort > 0 {
 		job.ExternalPort = freePort
 	}
@@ -2180,13 +2164,8 @@ func (w *BuildWorker) deployContainer(ctx context.Context, job *models.Deploymen
 		w.appendLog(job.DeploymentID, "info", "system", "Health check passed!")
 		w.updateStatus(job.DeploymentID, string(models.DeploymentRunning), "", "")
 
-		// Remove old images to save disk space (containers already stopped above)
-		for _, old := range previousDeployments {
-			if old.ImageTag != "" && old.ImageTag != job.ImageTag {
-				w.appendLog(job.DeploymentID, "info", "system", fmt.Sprintf("Removing old image: %s", old.ImageTag))
-				_ = exec.CommandContext(ctx, "docker", "rmi", old.ImageTag).Run()
-			}
-		}
+	// Remove old images to save disk space (containers already stopped above).
+		_ = exec.CommandContext(ctx, "docker", "image", "prune", "-f").Run()
 	} else {
 		w.appendLog(job.DeploymentID, "error", "system", "Health check failed! Rolling back...")
 		_ = exec.CommandContext(ctx, "docker", "stop", containerName).Run()
@@ -2195,6 +2174,41 @@ func (w *BuildWorker) deployContainer(ctx context.Context, job *models.Deploymen
 	}
 
 	return containerID, deployURL, nil
+}
+
+// stopRunningDeploymentContainers stops (and removes) every RUNNING container
+// whose name starts with "pushpaka_" except exceptName (the container we are
+// about to create).  It also disables the restart policy first so Docker does
+// not immediately revive the container after stop.
+func (w *BuildWorker) stopRunningDeploymentContainers(ctx context.Context, exceptName string) {
+	out, err := exec.CommandContext(ctx,
+		"docker", "ps",
+		"--filter", "name=pushpaka_",
+		"--format", "{{.Names}}",
+	).Output()
+	if err != nil {
+		return
+	}
+	for _, name := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		name = strings.TrimSpace(name)
+		if name == "" || name == exceptName {
+			continue
+		}
+		// Safety guard: only touch containers matching our scheme.
+		if !strings.HasPrefix(name, "pushpaka_") {
+			continue
+		}
+		// Disable auto-restart so Docker doesn't revive the container after stop.
+		_ = exec.CommandContext(ctx, "docker", "update", "--restart", "no", name).Run()
+		_ = exec.CommandContext(ctx, "docker", "stop", name).Run()
+		_ = exec.CommandContext(ctx, "docker", "rm", name).Run()
+		// Best-effort: mark any matching DB record as stopped.
+		// Extract the deployment-ID prefix (last 8 chars of the name after the second _).
+		parts := strings.Split(name, "_")
+		if len(parts) == 3 {
+			w.db.Model(&models.Deployment{}).Where("id LIKE ?", parts[2]+"%").Update("status", "stopped")
+		}
+	}
 }
 
 // findFreePort asks the OS for a free TCP port by binding to :0.
