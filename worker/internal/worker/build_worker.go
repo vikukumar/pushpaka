@@ -2086,10 +2086,10 @@ func (w *BuildWorker) buildImage(ctx context.Context, job *models.DeploymentJob,
 		}
 	}
 
-	// Cleanup dangling images and stopped intermediate containers
+	// Cleanup dangling images and stopped deployment containers (pushpaka_* only).
 	w.appendLog(job.DeploymentID, "info", "system", "Cleaning up build artifacts...")
 	_ = exec.CommandContext(ctx, "docker", "image", "prune", "-f").Run()
-	_ = exec.CommandContext(ctx, "docker", "container", "prune", "-f", "--filter", "label=pushpaka").Run()
+	w.pruneStoppedDeploymentContainers(ctx)
 
 	return nil
 }
@@ -2100,9 +2100,40 @@ func buildCacheDir(cloneDir, projectID string) string {
 }
 
 func (w *BuildWorker) deployContainer(ctx context.Context, job *models.DeploymentJob) (string, string, error) {
-	// For zero-downtime, we don't kill the old container yet.
-	// We use a unique name for the new container.
 	containerName := fmt.Sprintf("pushpaka_%s_%s", job.ProjectID[:8], job.DeploymentID[:8])
+
+	// ── Pre-flight: stop ALL previous containers for this project so their
+	// bound ports are released before we try to bind the new one.
+	// This must happen before `docker run`, not after, because Docker will
+	// refuse to start the new container if the old one still holds the port.
+	var previousDeployments []models.Deployment
+	w.db.Where("project_id = ? AND id != ?", job.ProjectID, job.DeploymentID).
+		Where("status IN ?", []string{"running", "building", "queued"}).
+		Find(&previousDeployments)
+	for _, old := range previousDeployments {
+		w.appendLog(job.DeploymentID, "info", "system",
+			fmt.Sprintf("Pre-flight: stopping previous container for deployment %s", old.ID[:8]))
+		oldName := fmt.Sprintf("pushpaka_%s_%s", old.ProjectID[:8], old.ID[:8])
+		_ = exec.CommandContext(ctx, "docker", "stop", oldName).Run()
+		_ = exec.CommandContext(ctx, "docker", "rm", oldName).Run()
+		// Fallback legacy names
+		_ = exec.CommandContext(ctx, "docker", "stop", fmt.Sprintf("pushpaka-%s-%s", old.ProjectID[:8], old.ID[:8])).Run()
+		_ = exec.CommandContext(ctx, "docker", "rm", fmt.Sprintf("pushpaka-%s-%s", old.ProjectID[:8], old.ID[:8])).Run()
+		_ = exec.CommandContext(ctx, "docker", "stop", old.ProjectID[:8]).Run()
+		_ = exec.CommandContext(ctx, "docker", "rm", old.ProjectID[:8]).Run()
+		w.db.Model(&models.Deployment{}).Where("id = ?", old.ID).Update("status", "stopped")
+	}
+
+	// Prune any other stopped pushpaka_* containers left over from previous runs
+	// (e.g. from a crashed worker that never cleaned up).
+	w.pruneStoppedDeploymentContainers(ctx)
+
+	// Re-allocate a fresh free port now that old containers have released theirs.
+	// The port chosen by the API at dispatch time may have since been taken.
+	if freePort := w.findFreePort(); freePort > 0 {
+		job.ExternalPort = freePort
+	}
+
 	w.appendLog(job.DeploymentID, "info", "system", fmt.Sprintf("Starting new container: %s", containerName))
 
 	// Build docker run arguments
@@ -2144,40 +2175,17 @@ func (w *BuildWorker) deployContainer(ctx context.Context, job *models.Deploymen
 	containerID := strings.TrimSpace(string(out))
 	deployURL := fmt.Sprintf("http://localhost:%d", job.ExternalPort)
 
-	// Health check and Zero-downtime swap
+	// Health check
 	if w.healthCheck(ctx, deployURL) {
-		w.appendLog(job.DeploymentID, "info", "system", "Health check passed! Cleaning up old deployments...")
-		// Mark current as running (it might have been building/queued)
+		w.appendLog(job.DeploymentID, "info", "system", "Health check passed!")
 		w.updateStatus(job.DeploymentID, string(models.DeploymentRunning), "", "")
 
-		// Kill other 'running' deployments for this project
-		var oldDeployments []models.Deployment
-		w.db.Where("project_id = ? AND status = ? AND id != ?", job.ProjectID, "running", job.DeploymentID).Find(&oldDeployments)
-		for _, old := range oldDeployments {
-			w.appendLog(job.DeploymentID, "info", "system", fmt.Sprintf("Stopping old deployment: %s", old.ID))
-
-			// Try the new naming scheme
-			newOldContainerName := fmt.Sprintf("pushpaka_%s_%s", old.ProjectID[:8], old.ID[:8])
-			_ = exec.CommandContext(ctx, "docker", "stop", newOldContainerName).Run()
-			_ = exec.CommandContext(ctx, "docker", "rm", newOldContainerName).Run()
-
-			// Fallback to previous naming schemes
-			legacyName1 := fmt.Sprintf("pushpaka-%s-%s", old.ProjectID[:8], old.ID[:8])
-			_ = exec.CommandContext(ctx, "docker", "stop", legacyName1).Run()
-			_ = exec.CommandContext(ctx, "docker", "rm", legacyName1).Run()
-
-			// Fallback to legacy naming if needed
-			legacyName := old.ProjectID[:8]
-			_ = exec.CommandContext(ctx, "docker", "stop", legacyName).Run()
-			_ = exec.CommandContext(ctx, "docker", "rm", legacyName).Run()
-
-			// Cleanup the old image to save space
+		// Remove old images to save disk space (containers already stopped above)
+		for _, old := range previousDeployments {
 			if old.ImageTag != "" && old.ImageTag != job.ImageTag {
 				w.appendLog(job.DeploymentID, "info", "system", fmt.Sprintf("Removing old image: %s", old.ImageTag))
 				_ = exec.CommandContext(ctx, "docker", "rmi", old.ImageTag).Run()
 			}
-
-			w.db.Model(&models.Deployment{}).Where("id = ?", old.ID).Update("status", "stopped")
 		}
 	} else {
 		w.appendLog(job.DeploymentID, "error", "system", "Health check failed! Rolling back...")
@@ -2187,6 +2195,59 @@ func (w *BuildWorker) deployContainer(ctx context.Context, job *models.Deploymen
 	}
 
 	return containerID, deployURL, nil
+}
+
+// findFreePort asks the OS for a free TCP port by binding to :0.
+func (w *BuildWorker) findFreePort() int {
+	for i := 0; i < 5; i++ {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err == nil {
+			port := l.Addr().(*net.TCPAddr).Port
+			l.Close()
+			if port > 0 {
+				return port
+			}
+		}
+	}
+	return 0
+}
+
+// pruneStoppedDeploymentContainers removes every container whose name matches
+// the "pushpaka_<projectID>_<deploymentID>" pattern AND whose status is NOT
+// "running". The bare "pushpaka" infrastructure container (Traefik, the app
+// server itself, etc.) is intentionally excluded by requiring the underscore
+// suffix in the name filter.
+func (w *BuildWorker) pruneStoppedDeploymentContainers(ctx context.Context) {
+	// List all containers (including stopped/exited) whose name begins with
+	// "pushpaka_". We use --format to get name and status on one line.
+	out, err := exec.CommandContext(ctx,
+		"docker", "ps", "-a",
+		"--filter", "name=pushpaka_",
+		"--format", "{{.Names}}\t{{.Status}}",
+	).Output()
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		name, status := parts[0], strings.ToLower(parts[1])
+		// Safety: only touch containers that follow our naming scheme
+		// (pushpaka_<8>_<8>). Never touch the bare "pushpaka" container.
+		if !strings.HasPrefix(name, "pushpaka_") {
+			continue
+		}
+		// Skip anything that is currently running.
+		if strings.HasPrefix(status, "up") {
+			continue
+		}
+		_ = exec.CommandContext(ctx, "docker", "rm", name).Run()
+	}
 }
 
 func (w *BuildWorker) fail(id, errMsg string) {
