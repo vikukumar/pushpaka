@@ -523,7 +523,7 @@ func (w *BuildWorker) processJob(ctx context.Context, job *models.DeploymentJob)
 				return
 			}
 
-		w.appendLog(job.DeploymentID, "info", "system", "Docker image built successfully")
+			w.appendLog(job.DeploymentID, "info", "system", "Docker image built successfully")
 			// Update ProjectCommit status
 			w.updateCommitStatus(job.ProjectID, job.CommitSHA, models.CommitStatusBuilt)
 
