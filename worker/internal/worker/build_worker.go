@@ -528,9 +528,11 @@ func (w *BuildWorker) processJob(ctx context.Context, job *models.DeploymentJob)
 			w.updateCommitStatus(job.ProjectID, job.CommitSHA, models.CommitStatusBuilt)
 
 			// Build-only mode: image is saved, do NOT start any container.
+			// Call completeTask (not updateStatus) so the HTTP callback fires
+			// and the backend can chain the next task (test or deploy).
 			if job.IsBuildOnly {
 				w.appendLog(job.DeploymentID, "success", "system", "Build completed successfully (build-only mode).")
-				w.updateStatus(job.DeploymentID, "finished", "", "")
+				w.completeTask(job.DeploymentID, true, "")
 				return
 			}
 		}
@@ -568,10 +570,10 @@ func (w *BuildWorker) processJob(ctx context.Context, job *models.DeploymentJob)
 		// Update ProjectCommit status
 		w.updateCommitStatus(job.ProjectID, job.CommitSHA, models.CommitStatusBuilt)
 
-		// 2. Deploy from buildTargetDir (which is already buildsDir)
+		// Build-only mode: image is saved (no Docker), do NOT start the server.
 		if job.IsBuildOnly {
-			w.appendLog(job.DeploymentID, "success", "system", "Build completed successfully (Build-only mode).")
-			w.updateStatus(job.DeploymentID, "finished", "", "") // Or some other final state
+			w.appendLog(job.DeploymentID, "success", "system", "Build completed successfully (build-only mode).")
+			w.completeTask(job.DeploymentID, true, "")
 			return
 		}
 
@@ -2927,21 +2929,12 @@ func (w *BuildWorker) handleBuildTask(ctx context.Context, task *models.ProjectT
 		Branch:       project.Branch,
 		BuildCommand: project.BuildCommand,
 		ImageTag:     fmt.Sprintf("pushpaka/%s:%s", shortID(task.ProjectID), shortID(task.CommitSHA)),
-		IsBuildOnly:  true, // Build only - don't start the server
+		IsBuildOnly:  true, // Build only — the IsBuildOnly path calls completeTask directly
 	}
 
+	// processJob calls w.completeTask on both success (via IsBuildOnly branch) and failure
+	// (via w.fail), so no further action is needed here.
 	w.processJob(ctx, job)
-
-	// [FIX] Transition check: Ensure we trigger the next task (Testing) if successful
-	var updatedTask models.ProjectTask
-	if err := w.db.First(&updatedTask, "id = ?", task.ID).Error; err == nil {
-		if updatedTask.Status == models.TaskStatusRunning {
-			w.appendLog(task.ID, "info", "system", "Build successful, triggering test suite...")
-			w.completeTask(task.ID, true, "")
-		}
-	} else {
-		w.completeTask(task.ID, false, fmt.Sprintf("failed to verify task status: %v", err))
-	}
 }
 
 func (w *BuildWorker) handleDeployTask(ctx context.Context, task *models.ProjectTask) {
