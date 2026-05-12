@@ -132,7 +132,7 @@ func RunWithOptions(ctx context.Context, opts RunOptions) error {
 
 	// Services
 	authSvc := services.NewAuthService(userRepo, cfg)
-	taskDispatcher := services.NewTaskDispatcher(taskRepo, projectRepo, workerNodeRepo, rdb, opts.InProcessQueue, &log.Logger)
+	taskDispatcher := services.NewTaskDispatcher(taskRepo, projectRepo, workerNodeRepo, domainRepo, deploymentRepo, rdb, opts.InProcessQueue, &log.Logger)
 	projectSvc := services.NewProjectService(cfg, projectRepo, deploymentRepo, taskRepo, taskDispatcher)
 	deploymentSvc := services.NewDeploymentService(deploymentRepo, projectRepo, envRepo, domainRepo, rdb, opts.InProcessQueue, taskDispatcher, cfg.BaseURL)
 	projectSvc.SetDeploymentService(deploymentSvc)

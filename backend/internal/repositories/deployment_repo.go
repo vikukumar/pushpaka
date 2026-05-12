@@ -56,6 +56,14 @@ func (r *DeploymentRepository) FindRunningByProjectID(projectID string) (*models
 	return basemodel.First[models.Deployment](r.db, "project_id = ? AND status = ?", projectID, "running")
 }
 
+// FindLatestRunningByProject finds the most-recently-started running deployment
+// for a project and writes it into dest. Returns an error if none exists.
+func (r *DeploymentRepository) FindLatestRunningByProject(projectID string, dest *models.Deployment) error {
+	return r.db.Where("project_id = ? AND status = ?", projectID, "running").
+		Order("created_at desc").
+		First(dest).Error
+}
+
 func (r *DeploymentRepository) FindAllRunning() ([]models.Deployment, error) {
 	return basemodel.Query[models.Deployment](r.db, "status = ?", "running")
 }

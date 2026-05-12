@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,29 +22,35 @@ import (
 )
 
 type TaskDispatcher struct {
-	taskRepo    *repositories.TaskRepository
-	projectRepo *repositories.ProjectRepository
-	workerRepo  *repositories.WorkerNodeRepository
-	rdb         *redis.Client
-	inQueue     *queue.InProcess
-	log         *zerolog.Logger
+	taskRepo       *repositories.TaskRepository
+	projectRepo    *repositories.ProjectRepository
+	workerRepo     *repositories.WorkerNodeRepository
+	domainRepo     *repositories.DomainRepository
+	deploymentRepo *repositories.DeploymentRepository
+	rdb            *redis.Client
+	inQueue        *queue.InProcess
+	log            *zerolog.Logger
 }
 
 func NewTaskDispatcher(
 	taskRepo *repositories.TaskRepository,
 	projectRepo *repositories.ProjectRepository,
 	workerRepo *repositories.WorkerNodeRepository,
+	domainRepo *repositories.DomainRepository,
+	deploymentRepo *repositories.DeploymentRepository,
 	rdb *redis.Client,
 	inQueue *queue.InProcess,
 	log *zerolog.Logger,
 ) *TaskDispatcher {
 	return &TaskDispatcher{
-		taskRepo:    taskRepo,
-		projectRepo: projectRepo,
-		workerRepo:  workerRepo,
-		rdb:         rdb,
-		inQueue:     inQueue,
-		log:         log,
+		taskRepo:       taskRepo,
+		projectRepo:    projectRepo,
+		workerRepo:     workerRepo,
+		domainRepo:     domainRepo,
+		deploymentRepo: deploymentRepo,
+		rdb:            rdb,
+		inQueue:        inQueue,
+		log:            log,
 	}
 }
 
@@ -240,18 +248,91 @@ func (d *TaskDispatcher) RestartTask(taskID string) error {
 func (d *TaskDispatcher) triggerNextTask(task *models.ProjectTask) {
 	switch task.Type {
 	case models.TaskTypeSync, models.TaskTypeFetch:
-		// Success -> Build
+		// Sync done → Build
 		d.CreateTask(task.ProjectID, models.TaskTypeBuild, task.CommitSHA)
+
 	case models.TaskTypeBuild:
-		// Success -> Test
-		d.CreateTask(task.ProjectID, models.TaskTypeTest, task.CommitSHA)
+		// Build done → Test only if the project has a test command configured.
+		// Otherwise skip straight to Deploy so we don't block on an empty test.
+		project, err := d.projectRepo.FindByIDInternal(task.ProjectID)
+		if err == nil && project.TestCommand != "" {
+			d.CreateTask(task.ProjectID, models.TaskTypeTest, task.CommitSHA)
+		} else {
+			d.log.Info().Str("project_id", task.ProjectID).Msg("no test command configured — skipping test, going straight to deploy")
+			d.CreateTask(task.ProjectID, models.TaskTypeDeploy, task.CommitSHA)
+		}
+
 	case models.TaskTypeTest:
-		// Success -> Deploy
+		// Test passed → Deploy
 		d.CreateTask(task.ProjectID, models.TaskTypeDeploy, task.CommitSHA)
+
 	case models.TaskTypeDeploy:
-		// Success -> Mark project as ready for deployment
-		d.projectRepo.UpdateStatus(task.ProjectID, "ready")
+		// Deploy succeeded → promote as default + attach verified domains to Traefik.
+		d.onDeploySuccess(task)
 	}
+}
+
+// onDeploySuccess promotes the fresh deployment as the live default and wires
+// any verified custom domains into the running container's Traefik labels.
+func (d *TaskDispatcher) onDeploySuccess(task *models.ProjectTask) {
+	// 1. Find the deployment record that was just deployed for this commit.
+	var dep models.Deployment
+	if err := d.deploymentRepo.FindLatestRunningByProject(task.ProjectID, &dep); err != nil {
+		d.log.Warn().Err(err).Str("project_id", task.ProjectID).Msg("onDeploySuccess: could not find running deployment")
+		d.projectRepo.UpdateStatus(task.ProjectID, "running")
+		return
+	}
+
+	// 2. Promote this deployment as the default/live one.
+	_ = d.deploymentRepo.ClearDefault(task.ProjectID)
+	_ = d.deploymentRepo.SetDefault(dep.ID)
+	_ = d.projectRepo.SetMainDeployID(task.ProjectID, dep.ID)
+	d.log.Info().Str("deployment_id", dep.ID).Msg("deployment promoted to default")
+
+	// 3. Attach verified custom domains via Traefik labels.
+	containerName := fmt.Sprintf("pushpaka_%s_%s", task.ProjectID[:8], dep.ID[:8])
+	domains, err := d.domainRepo.FindByProjectID(task.ProjectID)
+	if err != nil || len(domains) == 0 {
+		d.log.Info().Str("project_id", task.ProjectID).Msg("no custom domains found, using path-prefix routing only")
+		d.projectRepo.UpdateStatus(task.ProjectID, "running")
+		return
+	}
+
+	// Build a combined Host() OR PathPrefix() Traefik rule.
+	hostRules := []string{}
+	for _, dom := range domains {
+		if dom.Verified {
+			hostRules = append(hostRules, fmt.Sprintf("Host(`%s`)", dom.Domain))
+		}
+	}
+	if len(hostRules) == 0 {
+		d.log.Info().Str("project_id", task.ProjectID).Msg("no verified domains — using path-prefix routing only")
+		d.projectRepo.UpdateStatus(task.ProjectID, "running")
+		return
+	}
+
+	combinedRule := strings.Join(hostRules, " || ")
+	fullRule := fmt.Sprintf("%s || PathPrefix(`/p/%s`)", combinedRule, task.ProjectID[:8])
+
+	// Use `docker update` to hot-patch the label without restarting the container.
+	updateArgs := []string{
+		"update",
+		"--label-add", fmt.Sprintf("traefik.http.routers.%s.rule=%s", containerName, fullRule),
+		containerName,
+	}
+	out, err := exec.CommandContext(context.Background(), "docker", updateArgs...).CombinedOutput()
+	if err != nil {
+		d.log.Warn().Err(err).Str("output", string(out)).Str("container", containerName).
+			Msg("failed to update Traefik domain label on container")
+	} else {
+		for _, dom := range domains {
+			if dom.Verified {
+				d.log.Info().Str("domain", dom.Domain).Str("container", containerName).Msg("domain attached to container via Traefik")
+			}
+		}
+	}
+
+	d.projectRepo.UpdateStatus(task.ProjectID, "running")
 }
 func (d *TaskDispatcher) GetProjectTasks(projectID string) ([]models.ProjectTask, error) {
 	return d.taskRepo.FindByProjectID(projectID)
