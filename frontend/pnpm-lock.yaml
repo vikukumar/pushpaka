@@ -92,7 +92,7 @@ importers:
         version: 8.59.2(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3)
       autoprefixer:
         specifier: 10.5.0
-        version: 10.5.0(postcss@8.5.23)
+        version: 10.5.0(postcss@8.5.20)
       eslint:
         specifier: 9.39.4
         version: 9.39.4(jiti@2.6.1)
@@ -100,8 +100,8 @@ importers:
         specifier: 16.2.4
         version: 16.2.4(@typescript-eslint/parser@8.59.2(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3)
       postcss:
-        specifier: 8.5.23
-        version: 8.5.23
+        specifier: 8.5.20
+        version: 8.5.20
       tailwindcss:
         specifier: 4.2.4
         version: 4.2.4
@@ -907,8 +907,8 @@ packages:
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
 
-  baseline-browser-mapping@2.11.12:
-    resolution: {integrity: sha512-r7WnVImvVCeFpf2DOXfy41aPWzeNg3H/A2X4dKmy1QL0MSyyk/e7z8ihJ3N6Nn2PsdhkVlqnEfnUE4a05P2aTA==}
+  baseline-browser-mapping@2.11.11:
+    resolution: {integrity: sha512-/yImnXwyTvgMkhgekLHok/Rx5vO6E0BmStWlSqKWMVm2a2ITuZ1Tn+9bgLS+gZRdZmWtd8nxuhHpdmCUOWsTQQ==}
     engines: {node: '>=6.0.0'}
     hasBin: true
 
@@ -1860,8 +1860,8 @@ packages:
     resolution: {integrity: sha512-PS08Iboia9mts/2ygV3eLpY5ghnUcfLV/EXTOW1E2qYxJKGGBUtNjN76FYHnMs36RmARn41bC0AZmn+rR0OVpQ==}
     engines: {node: ^10 || ^12 || >=14}
 
-  postcss@8.5.23:
-    resolution: {integrity: sha512-g50586zr4bZmwFiTlflMu8E0bDTb5I5gertgwAKmsdUlTQIhZtunzUlD1WSzwcVWPoAVpsrA6vlfCD7oXvRwgg==}
+  postcss@8.5.20:
+    resolution: {integrity: sha512-lW616l85ucIQL+FocMmL7pQFPqBmwejrCMg+iPxyImlrANNJG9NHq/RkyCZopDhd8C3LA03PHRJDjkbGu8vvug==}
     engines: {node: ^10 || ^12 || >=14}
 
   prelude-ls@1.2.1:
@@ -2639,7 +2639,7 @@ snapshots:
       '@alloc/quick-lru': 5.2.0
       '@tailwindcss/node': 4.2.4
       '@tailwindcss/oxide': 4.2.4
-      postcss: 8.5.23
+      postcss: 8.5.20
       tailwindcss: 4.2.4
 
   '@tanstack/query-core@5.100.9': {}
@@ -2931,13 +2931,13 @@ snapshots:
 
   asynckit@0.4.0: {}
 
-  autoprefixer@10.5.0(postcss@8.5.23):
+  autoprefixer@10.5.0(postcss@8.5.20):
     dependencies:
       browserslist: 4.28.2
       caniuse-lite: 1.0.30001791
       fraction.js: 5.3.4
       picocolors: 1.1.1
-      postcss: 8.5.23
+      postcss: 8.5.20
       postcss-value-parser: 4.2.0
 
   available-typed-arrays@1.0.7:
@@ -2960,7 +2960,7 @@ snapshots:
 
   balanced-match@1.0.2: {}
 
-  baseline-browser-mapping@2.11.12: {}
+  baseline-browser-mapping@2.11.11: {}
 
   brace-expansion@2.1.0:
     dependencies:
@@ -2972,7 +2972,7 @@ snapshots:
 
   browserslist@4.28.2:
     dependencies:
-      baseline-browser-mapping: 2.11.12
+      baseline-browser-mapping: 2.11.11
       caniuse-lite: 1.0.30001806
       electron-to-chromium: 1.5.349
       node-releases: 2.0.38
@@ -3907,7 +3907,7 @@ snapshots:
     dependencies:
       '@next/env': 16.2.11
       '@swc/helpers': 0.5.15
-      baseline-browser-mapping: 2.11.12
+      baseline-browser-mapping: 2.11.11
       caniuse-lite: 1.0.30001806
       postcss: 8.4.31
       react: 19.2.5
@@ -4025,7 +4025,7 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  postcss@8.5.23:
+  postcss@8.5.20:
     dependencies:
       nanoid: 3.3.17
       picocolors: 1.1.1
